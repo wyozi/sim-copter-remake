@@ -1099,53 +1099,48 @@ bool FSimCopterMissionSystem::FindNearestHospitalTile(int32 OriginX, int32 Origi
 
 bool FSimCopterMissionSystem::FindDefaultDestinationTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const
 {
-	auto IsInBounds = [](int32 X, int32 Y) -> bool
+	// PLACEHOLDER, not a port: the original's transport destination (what feeds EVT_SetSecondaryCoords,
+	// record +0x30/+0x34) has not been traced in SimCopter.exe yet. Until it is, pick the nearest
+	// building at least MinDistance tiles away, preferring occupied ones (XBLD flag 0x04) and falling
+	// back to any real building (0x02). Buildings never stand in water, which is the point: the old
+	// version sampled only 80 tiles along eight compass rays, and once GetXbldPropertyFlags became the
+	// real table (39 occupied ids) it almost always missed and fell through to the unchecked mirror
+	// tile below - which on Sea Cliff, 76% water, is usually open sea.
+	constexpr int32 MinDistance = 14;
+
+	auto FindNearestWithFlag = [this, OriginX, OriginY](const uint8 RequiredFlag, int32& BestX, int32& BestY) -> bool
 	{
-		return X >= 0 && X < 128 && Y >= 0 && Y < 128;
-	};
-
-	auto IsUsableDestination = [this, &IsInBounds](int32 X, int32 Y) -> bool
-	{
-		if (!IsInBounds(X, Y))
+		int32 BestDistanceSquared = MAX_int32;
+		for (int32 Y = 0; Y < 128; ++Y)
 		{
-			return false;
-		}
-
-		if (World == nullptr)
-		{
-			return true;
-		}
-
-		const int32 XbldId = World->GetXbldTileId(X, Y);
-		return (GetXbldPropertyFlags(XbldId) & 0x04) != 0;
-	};
-
-	static const FIntPoint Directions[] = {
-		FIntPoint(1, 0),
-		FIntPoint(1, 1),
-		FIntPoint(0, 1),
-		FIntPoint(-1, 1),
-		FIntPoint(-1, 0),
-		FIntPoint(-1, -1),
-		FIntPoint(0, -1),
-		FIntPoint(1, -1)
-	};
-
-	for (int32 Radius = 14; Radius <= 72; Radius += 6)
-	{
-		for (const FIntPoint& Direction : Directions)
-		{
-			const int32 CandidateX = FMath::Clamp(OriginX + Direction.X * Radius, 0, 127);
-			const int32 CandidateY = FMath::Clamp(OriginY + Direction.Y * Radius, 0, 127);
-			if ((CandidateX != OriginX || CandidateY != OriginY) && IsUsableDestination(CandidateX, CandidateY))
+			for (int32 X = 0; X < 128; ++X)
 			{
-				OutX = CandidateX;
-				OutY = CandidateY;
-				return true;
+				const int32 DX = X - OriginX;
+				const int32 DY = Y - OriginY;
+				if (FMath::Max(FMath::Abs(DX), FMath::Abs(DY)) < MinDistance)
+				{
+					continue;
+				}
+				const int32 DistanceSquared = DX * DX + DY * DY;
+				if (DistanceSquared < BestDistanceSquared &&
+					(GetXbldPropertyFlags(World->GetXbldTileId(X, Y)) & RequiredFlag) != 0)
+				{
+					BestDistanceSquared = DistanceSquared;
+					BestX = X;
+					BestY = Y;
+				}
 			}
 		}
+		return BestDistanceSquared != MAX_int32;
+	};
+
+	if (World != nullptr &&
+		(FindNearestWithFlag(0x04, OutX, OutY) || FindNearestWithFlag(0x02, OutX, OutY)))
+	{
+		return true;
 	}
 
+	// Only a world with no buildings at all (the test stubs) gets here.
 	const int32 MirrorX = FMath::Clamp(127 - OriginX, 0, 127);
 	const int32 MirrorY = FMath::Clamp(127 - OriginY, 0, 127);
 	if (MirrorX != OriginX || MirrorY != OriginY)

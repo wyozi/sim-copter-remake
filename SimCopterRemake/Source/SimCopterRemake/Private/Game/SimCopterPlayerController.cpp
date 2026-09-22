@@ -13,6 +13,7 @@
 #include "Framework/Application/IInputProcessor.h"
 #include "Framework/Application/SlateApplication.h"
 #include "Game/SimCopterKeyboardFocus.h"
+#include "Game/SimCopterMacModifierResync.h"
 #include "Game/SimCopterSessionSubsystem.h"
 #include "Game/SimCopterSaveSubsystem.h"
 #include "Game/SimCopterSettings.h"
@@ -95,6 +96,7 @@ public:
 	virtual void Tick(const float DeltaTime, FSlateApplication& SlateApp, TSharedRef<ICursor> Cursor) override
 	{
 		Repair();
+		SimCopterMacModifierResync::Tick(SlateApp);
 	}
 
 	virtual bool HandleKeyDownEvent(FSlateApplication& SlateApp, const FKeyEvent& InKeyEvent) override

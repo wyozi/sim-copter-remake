@@ -2901,9 +2901,9 @@ bool ASimCopterAmbientVehiclesActor::TryGetDebugViewTarget(const int32 Which, FV
 		}
 		return false;
 	default:
-		for (const FSimCopterVehicleWreck& Wreck : Wrecks)
+		if (!Wrecks.IsEmpty())
 		{
-			OutWorld = Wreck.World;
+			OutWorld = Wrecks[0].World;
 			return true;
 		}
 		return false;

@@ -372,7 +372,7 @@ void FSimCopterMissionSystem::DispatchScheduledType(int32 Bucket)
 		else if (DifficultyTier < 3 || DifficultyTier > 4)
 		{
 			int16 Mask = (static_cast<int16>(RandVal) ^ Shf) - Shf;
-			if ((Mask & 7 ^ Shf) != Shf) CreateEventOfType(TYPE_BuildingFire);
+			if (((Mask & 7) ^ Shf) != Shf) CreateEventOfType(TYPE_BuildingFire);
 			else CreateEventOfType(TYPE_CarFireEvent);
 		}
 		else
@@ -389,13 +389,13 @@ void FSimCopterMissionSystem::DispatchScheduledType(int32 Bucket)
 		if (DifficultyTier == 2)
 		{
 			int16 Mask = (static_cast<int16>(RandVal) ^ Shf) - Shf;
-			if ((Mask & 1 ^ Shf) != Shf) CreateEventOfType(TYPE_Robber);
+			if (((Mask & 1) ^ Shf) != Shf) CreateEventOfType(TYPE_Robber);
 			else CreateEventOfType(TYPE_Arsonist);
 		}
 		else if (DifficultyTier == 4)
 		{
 			int16 Mask = (static_cast<int16>(RandVal) ^ Shf) - Shf;
-			int32 CaseVal = (Mask & 7 ^ Shf) - Shf;
+			int32 CaseVal = ((Mask & 7) ^ Shf) - Shf;
 			if (CaseVal == 0) CreateEventOfType(TYPE_Mugger);
 			else if (CaseVal == 1) CreateEventOfType(TYPE_Robber);
 			else if (CaseVal == 2 || CaseVal == 3) CreateEventOfType(TYPE_Arsonist);
@@ -415,13 +415,13 @@ void FSimCopterMissionSystem::DispatchScheduledType(int32 Bucket)
 		if (DifficultyTier == 2)
 		{
 			int16 Mask = (static_cast<int16>(RandVal) ^ Shf) - Shf;
-			if ((Mask & 3 ^ Shf) != Shf) CreateEventOfType(TYPE_RooftopRescue);
+			if (((Mask & 3) ^ Shf) != Shf) CreateEventOfType(TYPE_RooftopRescue);
 			else CreateEventOfType(TYPE_BoatRescue);
 		}
 		else if (DifficultyTier == 3)
 		{
 			int16 Mask = (static_cast<int16>(RandVal) ^ Shf) - Shf;
-			int16 Diff = (Mask & 7 ^ Shf);
+			int16 Diff = ((Mask & 7) ^ Shf);
 			if (Diff == Shf) CreateEventOfType(TYPE_RooftopRescue);
 			else if (static_cast<uint16>(Diff - Shf) != 1) CreateEventOfType(TYPE_BoatRescue);
 			else CreateEventOfType(TYPE_TrainRescue);
@@ -717,7 +717,7 @@ bool FSimCopterMissionSystem::TryPickRandomTileNearCamera(int32& OutTX, int32& O
 		
 		int32 SignRoll = Rand.Rand();
 		int16 Shf = static_cast<int16>(SignRoll >> 15);
-		if ((((static_cast<uint16>(SignRoll) ^ Shf) - Shf) & 1 ^ Shf) != Shf)
+		if (((((static_cast<uint16>(SignRoll) ^ Shf) - Shf) & 1) ^ Shf) != Shf)
 		{
 			MaxVal = -MaxVal;
 		}

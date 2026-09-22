@@ -39,6 +39,13 @@ public class SimCopterRemake : ModuleRules
 		{
 			PrivateDependencyModuleNames.AddRange(new string[] { "DLSSBlueprint", "StreamlineDLSSGBlueprint", "StreamlineReflexBlueprint" });
 		}
+		else
+		{
+			// The .uproject allow-lists those plugins to Win64, so elsewhere nothing publishes the
+			// guards and Clang's -Wundef rejects the bare #if. Define them off explicitly.
+			PrivateDefinitions.Add("WITH_DLSS=0");
+			PrivateDefinitions.Add("WITH_STREAMLINE=0");
+		}
 
 		// A packaged game reads the original data as loose files beside the executable. UAT cannot
 		// stage files directly from the repo-level Reference folder, so game targets first copy the

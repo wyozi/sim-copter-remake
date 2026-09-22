@@ -5023,7 +5023,7 @@ ASimCopterMissionSystemActor* ASimCopterTrafficSystemActor::ResolveMissionSystem
 {
 	if (UWorld* World = GetWorld())
 	{
-		for (TActorIterator<ASimCopterMissionSystemActor> It(World); It; ++It)
+		if (TActorIterator<ASimCopterMissionSystemActor> It(World); It)
 		{
 			return *It;
 		}

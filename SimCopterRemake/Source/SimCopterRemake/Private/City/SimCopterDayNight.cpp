@@ -367,7 +367,7 @@ ADaySequenceActor* USimCopterDayNightSubsystem::ResolveDaySequenceActor()
 
 	// ACelestialVaultDaySequenceActor derives from ADaySequenceActor, so the base class finds the
 	// shipped level's actor without this having to depend on the CelestialVault type.
-	for (TActorIterator<ADaySequenceActor> It(World); It; ++It)
+	if (TActorIterator<ADaySequenceActor> It(World); It)
 	{
 		CachedDaySequenceActor = *It;
 		return *It;

@@ -3797,6 +3797,52 @@ bool ASimCopterMissionSystemActor::IsMissionBegun(const SimCopterMissions::FSimC
 	const bool bHasRescuePickup = (Record.TypeMask & SimCopterMissions::TYPE_RescuePeople) != 0;
 
 	if (bHasPassengerPickup)
+void ASimCopterMissionSystemActor::DumpMissionMarkers() const
+{
+	ASimCopterTrafficSystemActor* TrafficSystem = ResolveTrafficSystem();
+	auto WorldToTile = [TrafficSystem](const FVector& Location) -> FIntPoint
+	{
+		FIntPoint Tile(INDEX_NONE, INDEX_NONE);
+		if (TrafficSystem != nullptr)
+		{
+			TrafficSystem->TryGetPeopleTileCoordinateAtWorldLocation(Location, Tile.X, Tile.Y);
+		}
+		return Tile;
+	};
+
+	for (const SimCopterMissions::FSimCopterMissionRecord& Record : MissionSystem.GetRecords())
+	{
+		if (!Record.bActive)
+		{
+			continue;
+		}
+		UE_LOG(LogTemp, Display,
+			TEXT("MARKERS event %d '%s' type 0x%x begun %d: map primary (%d,%d) secondary (%d,%d) tertiary (%d,%d)"),
+			Record.EventId, *Record.Name, Record.TypeMask, IsMissionBegun(Record) ? 1 : 0,
+			Record.TileX, Record.TileY, Record.SecondaryX, Record.SecondaryY, Record.TertiaryX, Record.TertiaryY);
+		for (TActorIterator<ASimCopterGroundAgent> It(GetWorld()); It; ++It)
+		{
+			if (It->MissionEventId != Record.EventId)
+			{
+				continue;
+			}
+			const FIntPoint Tile = WorldToTile(It->GetActorLocation());
+			UE_LOG(LogTemp, Display, TEXT("MARKERS   person %s at (%d,%d): %d tiles from the map primary"),
+				*It->GetName(), Tile.X, Tile.Y,
+				FMath::Max(FMath::Abs(Tile.X - Record.TileX), FMath::Abs(Tile.Y - Record.TileY)));
+		}
+	}
+
+	TArray<FSimCopterMissionWorldMarkerEntry> WorldMarkers;
+	BuildMissionWorldMarkers(WorldMarkers);
+	for (const FSimCopterMissionWorldMarkerEntry& Marker : WorldMarkers)
+	{
+		const FIntPoint Tile = WorldToTile(Marker.WorldLocation);
+		UE_LOG(LogTemp, Display, TEXT("MARKERS world marker %s '%s' at tile (%d,%d)"),
+			*Marker.Label, *Marker.Detail, Tile.X, Tile.Y);
+	}
+}
+
 	{
 		int32 TransportOnboard = 0;
 		if (const UWorld* World = GetWorld())

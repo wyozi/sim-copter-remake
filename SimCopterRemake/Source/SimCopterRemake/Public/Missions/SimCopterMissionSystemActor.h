@@ -215,6 +215,9 @@ public:
 
 	// Returns true if the player has begun the mission (e.g. passenger/patient/victim picked up or onboard).
 	bool IsMissionBegun(const SimCopterMissions::FSimCopterMissionRecord& Record) const;
+	// Logs every live record's map tiles beside where its people actually stand and where its
+	// 3D world markers resolve to, so a marker pointing at the wrong place can be measured.
+	void DumpMissionMarkers() const;
 
 	// --- Emergency dispatch resolution hooks ---
 	// These are what an arrived fire truck / police car / ambulance asks of the mission

@@ -8815,6 +8815,14 @@ void ASimCopterHelicopterPawn::SimGrantTool(int32 ToolIndex, int32 bGranted)
 		EquipmentState.GetEffectiveEquipmentMask());
 }
 
+void ASimCopterHelicopterPawn::SimDumpMissionMarkers()
+{
+	if (const ASimCopterMissionSystemActor* Missions = ResolveMissionSystem())
+	{
+		Missions->DumpMissionMarkers();
+	}
+}
+
 void ASimCopterHelicopterPawn::SimDumpHeliState()
 {
 	const FSimCopterHelicopterDefinition* Definition = GetHelicopterDefinition();

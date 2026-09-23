@@ -1910,6 +1910,9 @@ private:
 	void SimGrantTool(int32 ToolIndex, int32 bGranted);
 	UFUNCTION(Exec)
 	void SimDumpHeliState();
+	// Logs mission map/world marker tiles against where the mission's people actually are.
+	UFUNCTION(Exec)
+	void SimDumpMissionMarkers();
 
 	// Emergency dispatch console commands, so F2-F5 can also be exercised headlessly.
 	// Service: 0 fire truck, 1 police, 2 ambulance (SimCopterDispatch::EService order).

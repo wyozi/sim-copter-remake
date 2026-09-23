@@ -54,3 +54,7 @@ __pycache__/
 *.ilk
 *.idb
 *.ipch
+
+# Tools/MacBench output: CSV captures, logs, and screenshots of the city (original game art), plus
+# the benchmark's backup of the player's own settings.
+/Docs/scratchpad/mac-bench

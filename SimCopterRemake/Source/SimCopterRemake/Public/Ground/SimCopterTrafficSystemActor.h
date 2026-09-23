@@ -805,6 +805,7 @@ private:
 	bool BeginTunnelTransit(ASimCopterGroundAgent& Agent, int32 EntryNode, int32 ApproachNode);
 	void UpdateTunnelTransits(float DeltaSeconds);
 	friend class FSimCopterParamedicCabinHandoffTest;
+	friend class FSimCopterParamedicAlightsOnHelipadTest;
 	friend class FSimCopterHospitalSitesTest;
 	friend class FSimCopterPoliceRoofBoardingTest;
 	TArray<FSimCopterGroundRouteNode> RoadNodes;

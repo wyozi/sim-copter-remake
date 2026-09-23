@@ -3345,8 +3345,8 @@ bool ASimCopterGroundAgent::IsHelicopterWithinRoofPostAggro(const ASimCopterHeli
 
 bool ASimCopterGroundAgent::IsAtHelicopterForHandoff(const ASimCopterHelicopterPawn& Helicopter) const
 {
-	// Riding it counts, and has to: a medic who climbed aboard unloads a patient in flight, which is
-	// BHAV 263 rec[1] -> 29 -> 31 -> 3 and is meant to work.
+	// Riding it counts. BHAV 263 does not get here with a rider - rec[1] -> 29 is op17, the medic
+	// getting off first (see CanAlightHere) - but a rider is at the aircraft by any measure.
 	if (BehaviorCarrier.Get() == &Helicopter)
 	{
 		return true;
@@ -3613,8 +3613,15 @@ bool ASimCopterGroundAgent::CanAlightHere() const
 	// the test and nobody could ever get out - which is what stranded the train survivors aboard.
 	// Ordinary roof delivery is rejected separately by IsPassengerDeliveryLocationAllowed; the
 	// state-6 medevac exception remains able to use the hospital helipad.
+	//
+	// Emergency crew skip that rule: it exists so a scored passenger cannot complete on a roof, and
+	// crew are never scored. FUN_004c9bc0 has no such rule for anyone - its ground is FUN_004c82c0,
+	// the higher of object tops and terrain, so a landed helipad counts. A medic riding the cabin
+	// has to be able to step out there: BHAV 263 rec[29] is op17 (FUN_004cb190 -> FUN_004c9bc0),
+	// the medic getting off, and only then do rec[31]/rec[3] take the patient out. Refusing it
+	// left the patient aboard until the player put the medic down by hand.
 	const ASimCopterTrafficSystemActor* TrafficSystem = Cast<ASimCopterTrafficSystemActor>(GetOwner());
-	if (CabinHelicopter != nullptr)
+	if (CabinHelicopter != nullptr && !IsEmergencyCrewMember())
 	{
 		const ASimCopterMissionSystemActor* Missions = Cast<ASimCopterMissionSystemActor>(
 			UGameplayStatics::GetActorOfClass(GetWorld(), ASimCopterMissionSystemActor::StaticClass()));

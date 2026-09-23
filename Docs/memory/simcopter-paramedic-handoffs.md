@@ -326,8 +326,9 @@ Two gates now decide the visible one, both on `ASimCopterGroundAgent`:
   `PutSelectedPersonOnMe` (op 44). Horizontally it is airframe contact plus
   `HelicopterHandoffReachCm` (25 cm); vertically it is a **window** (`150 cm`, 24 original units)
   feet-to-doorsill, not contact, because unloading a helicopter still hovering just off the pad is
-  wanted — what is not wanted is doing it from the far side of the roof. Riding the aircraft always
-  counts (BHAV 263 rec[1] -> 29 -> 31 -> 3 is the in-flight unload and is meant to work).
+  wanted — what is not wanted is doing it from the far side of the roof. Riding the aircraft counts
+  too, but BHAV 263 never uses that: rec[29] is op17, the medic **getting off** first (see "A
+  medic riding the cabin gets off first" below). The old reading of it as an in-flight unload was wrong.
   **Op 47 now propagates its result** where `FUN_004cc8d0` always returned 1: rec[3]'s false edge is
   -3, so a refusal unwinds to 801's idle and the medic probes again. A retry, not a dead end.
 - **`IsHelicopterWithinRoofPostAggro`**, checked in `SelectObjectOfClass`'s PlayerHelicopter arm. A
@@ -384,6 +385,26 @@ that case keeps the timer.
 
 Covered by `SimCopter.Dispatch.EmergencyCrewStates` and the vehicle half of
 `SimCopter.Behavior.VM.SelectionContact`.
+
+## A medic riding the cabin gets off first (2026-09-23)
+
+Reported as "landed on the hospital pad with a medic aboard; the patient stayed in until I put the
+medic down". **BHAV 263 rec[29] is op17** (`FUN_004cb190` -> `FUN_004c9bc0`), "get off whatever I'm
+on". The dump labels it `threat-response`. For a rider the path is rec[0] op84 (a patient aboard),
+rec[1] op59 (carrier is the player), rec[29] op17 (the medic alights; false edge retT, so 801
+retries), rec[31] op84, rec[3] op47 (patient out). The original's riders run their program every
+tick (`FUN_004c5fb0` -> `FUN_004c6450` copies the carrier's position onto them, then
+`FUN_004ce7b0`), so op25(209) sees the hospital tile under the aircraft. `FUN_004c9bc0`'s ground
+is `FUN_004c82c0`, the higher of object tops and terrain, so a landed helipad is ground.
+
+The remake refused the step: `CanAlightHere` applied the scored-passenger roof rule
+(`IsPassengerDeliveryLocationAllowed`) to every cabin rider. `GetMissionPassengerKind()` maps state
+5 to Rescue, and a Rescue may only finish on terrain. Emergency crew (`IsEmergencyCrewMember`) now
+skip that rule; the aircraft's six-unit height band still applies. Nothing else changed, and it is
+a restoration, not a divergence. Covered by `SimCopter.Missions.ParamedicAlightsOnHelipad`, which
+fails without the fix. Also in the original, the rider suppresses a replacement roof medic
+(`FUN_004c25b0` / `FUN_004c1fb0` count live D1 people within 5 tiles), so the rider really is the
+one expected to unload. Evidence: `Docs/scratchpad/agent-sessions/2026-09-23-riding-medic-unload/`.
 
 ## A medic in your cabin halves the patient's deterioration (BHAV 281)
 

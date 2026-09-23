@@ -73,6 +73,50 @@ bool FSimCopterParamedicCabinHandoffTest::RunTest(const FString& Parameters)
 }
 
 
+// A medic riding the cabin must be able to step out onto a landed helipad: BHAV 263 rec[1] -> 29 is
+// op17 (FUN_004cb190 -> FUN_004c9bc0), the medic getting off, and only after it do rec[31]/rec[3]
+// take the patient out. FUN_004c9bc0 measures from FUN_004c82c0 - object tops or terrain - so a roof
+// is ground to it. The scored-passenger roof rule must not hold the crew aboard. This world has no
+// terrain, so a seat's drop point is "not on terrain" exactly as a helipad is.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(FSimCopterParamedicAlightsOnHelipadTest,
+	"SimCopter.Missions.ParamedicAlightsOnHelipad",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterParamedicAlightsOnHelipadTest::RunTest(const FString& Parameters)
+{
+	const UWorld::InitializationValues InitValues = UWorld::InitializationValues()
+		.AllowAudioPlayback(false).CreatePhysicsScene(false).CreateNavigation(false)
+		.CreateAISystem(false).ShouldSimulatePhysics(false);
+	UWorld* World = UWorld::CreateWorld(EWorldType::Game, false, NAME_None, nullptr, true,
+		ERHIFeatureLevel::Num, &InitValues);
+	ASimCopterTrafficSystemActor* Traffic = World->SpawnActor<ASimCopterTrafficSystemActor>();
+	Traffic->PeopleTileClasses.Init(7, FSimCity2000City::TileCount);
+	Traffic->ActiveTileSize = 400.0f;
+	World->SpawnActor<ASimCopterMissionSystemActor>();
+	ASimCopterGroundAgent* Medic = World->SpawnActor<ASimCopterGroundAgent>();
+	ASimCopterGroundAgent* Survivor = World->SpawnActor<ASimCopterGroundAgent>();
+	ASimCopterHelicopterPawn* Helicopter = World->SpawnActor<ASimCopterHelicopterPawn>();
+	Medic->SetOwner(Traffic);
+	Survivor->SetOwner(Traffic);
+	Medic->BehaviorContext.Attributes[EBhavAttr::State] = 5;
+	Survivor->BehaviorContext.Attributes[EBhavAttr::State] = 1;
+
+	const int32 SeatsEmpty = Helicopter->GetAvailablePassengerSeats();
+	TestTrue(TEXT("Medic boards the landed helicopter"), Medic->BoardCarrier(Helicopter, false));
+	TestTrue(TEXT("Survivor boards the landed helicopter"), Survivor->BoardCarrier(Helicopter, false));
+	TestEqual(TEXT("Both take a seat"), Helicopter->GetAvailablePassengerSeats(), SeatsEmpty - 2);
+
+	TestFalse(TEXT("A scored rescue still may not finish off terrain"), Survivor->CanAlightHere());
+	TestTrue(TEXT("The riding medic may step out onto the pad"), Medic->CanAlightHere());
+	TestTrue(TEXT("Op17 gets the medic off"), Medic->TryAlightHere());
+	TestNull(TEXT("The medic no longer rides"), Medic->GetBehaviorCarrier());
+	TestEqual(TEXT("The medic's seat is free"), Helicopter->GetAvailablePassengerSeats(), SeatsEmpty - 1);
+	TestTrue(TEXT("The survivor stays aboard"), Survivor->GetBehaviorCarrier() == Helicopter);
+
+	World->DestroyWorld(false);
+	return true;
+}
+
 // A medevac is delivered at ANY hospital (FUN_004a7a10's 0x20 branch gives it no +0x30), so the
 // mission actor serves every hospital footprint the city has. It gets them one per building from
 // the people scene's per-footprint nodes, keyed on the footprint origin that

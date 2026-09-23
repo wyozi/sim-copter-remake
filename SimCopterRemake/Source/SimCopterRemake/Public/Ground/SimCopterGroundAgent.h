@@ -1156,6 +1156,7 @@ public:
 private:
 	friend class FSimCopterSafePassengerLandingTest;
 	friend class FSimCopterParamedicCabinHandoffTest;
+	friend class FSimCopterParamedicAlightsOnHelipadTest;
 	friend class FSimCopterPoliceRoofBoardingTest;
 	FVector MoveTargetLocation = FVector::ZeroVector;
 	FVector CurrentVelocityCmPerSec = FVector::ZeroVector;

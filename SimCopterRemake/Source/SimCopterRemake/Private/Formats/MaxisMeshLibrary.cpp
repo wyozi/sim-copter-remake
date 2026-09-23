@@ -329,6 +329,28 @@ int32 MappingVariantPenalty(const FString& TableName)
 }
 }
 
+TSharedPtr<const FMaxisMeshLibrary> FMaxisMeshLibrary::GetShared(const FString& OriginalGameRoot, FString& OutError)
+{
+	check(IsInGameThread());
+	// Keyed like FSimCopterPopulationFigure::GetShared. A failed root is not cached, so a later
+	// call after the player fixes their install can still succeed.
+	static TMap<FString, TSharedPtr<const FMaxisMeshLibrary>> Cache;
+
+	const FString Key = FPaths::ConvertRelativePathToFull(OriginalGameRoot);
+	if (const TSharedPtr<const FMaxisMeshLibrary>* Found = Cache.Find(Key))
+	{
+		return *Found;
+	}
+
+	TSharedPtr<FMaxisMeshLibrary> Library = MakeShared<FMaxisMeshLibrary>();
+	if (!Library->LoadFromOriginalGameRoot(OriginalGameRoot, OutError))
+	{
+		return nullptr;
+	}
+	Cache.Add(Key, Library);
+	return Library;
+}
+
 bool FMaxisMeshLibrary::LoadFromOriginalGameRoot(const FString& OriginalGameRoot, FString& OutError)
 {
 	MeshFiles.Reset();

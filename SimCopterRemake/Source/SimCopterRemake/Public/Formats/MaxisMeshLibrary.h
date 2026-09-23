@@ -21,6 +21,10 @@ class FMaxisMeshLibrary
 public:
 	bool LoadFromOriginalGameRoot(const FString& OriginalGameRoot, FString& OutError);
 
+	// The library for one original-game root, parsed once and shared. Game thread only. The data
+	// is immutable once loaded, so pointers returned by the Find* lookups stay valid for the run.
+	static TSharedPtr<const FMaxisMeshLibrary> GetShared(const FString& OriginalGameRoot, FString& OutError);
+
 	const FMaxisMeshObject* FindObjectByTileId(int32 TileId, const TArray<FColor>** OutColorMap = nullptr) const;
 	const FMaxisMeshObject* FindObjectByTableName(const FString& TableName, const TArray<FColor>** OutColorMap = nullptr) const;
 

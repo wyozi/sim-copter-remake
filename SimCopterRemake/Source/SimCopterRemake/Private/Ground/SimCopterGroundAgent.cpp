@@ -5859,9 +5859,11 @@ bool ASimCopterGroundAgent::LoadOriginalMeshFromOriginalGameRoot()
 		return false;
 	}
 
-	FMaxisMeshLibrary MeshLibrary;
+	// Shared: this runs for every vehicle the traffic pool spawns, and it used to read and parse
+	// all three sim3d*.max files (~1.5 MB) from disk each time - a hitch per spawn while flying.
 	FString Error;
-	if (!MeshLibrary.LoadFromOriginalGameRoot(RootPath, Error))
+	const TSharedPtr<const FMaxisMeshLibrary> MeshLibrary = FMaxisMeshLibrary::GetShared(RootPath, Error);
+	if (!MeshLibrary.IsValid())
 	{
 		LastMeshLoadError = Error;
 		UE_LOG(LogSimCopterGroundAgent, Warning, TEXT("%s"), *LastMeshLoadError);
@@ -5870,7 +5872,7 @@ bool ASimCopterGroundAgent::LoadOriginalMeshFromOriginalGameRoot()
 	}
 
 	const TArray<FColor>* ColorMap = nullptr;
-	const FMaxisMeshObject* MeshObject = MeshLibrary.FindObjectByTableName(MeshTableName, &ColorMap);
+	const FMaxisMeshObject* MeshObject = MeshLibrary->FindObjectByTableName(MeshTableName, &ColorMap);
 	if (MeshObject == nullptr)
 	{
 		LastMeshLoadError = FString::Printf(TEXT("Could not find ground-agent mesh '%s' in '%s'."), *MeshTableName, *RootPath);

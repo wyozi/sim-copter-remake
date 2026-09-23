@@ -4,7 +4,10 @@
 #include "Components/AudioComponent.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
+#include "Flight/SimCopterHelicopterPawn.h"
 #include "Formats/SimCopterOriginalGamePaths.h"
+#include "Game/SimCopterSettings.h"
+#include "GameFramework/PlayerController.h"
 #include "HAL/FileManager.h"
 #include "Misc/FileHelper.h"
 #include "Misc/Paths.h"
@@ -224,6 +227,50 @@ void USimCopterAudioSubsystem::Tick(float DeltaSeconds)
 			const FSlot& Slot = Slots[NextId];
 			CurrentDispatchVoiceEndTime = Now + static_cast<double>(Slot.Clip.Duration);
 		}
+	}
+
+	UpdateOutsideMuffle();
+}
+
+void USimCopterAudioSubsystem::UpdateOutsideMuffle()
+{
+	const USimCopterSettings* Settings = USimCopterSettings::Get(this);
+	const APlayerController* Controller = GetWorld() != nullptr ? GetWorld()->GetFirstPlayerController() : nullptr;
+	const ASimCopterHelicopterPawn* Helicopter =
+		Controller != nullptr ? Cast<ASimCopterHelicopterPawn>(Controller->GetPawn()) : nullptr;
+	const bool bInCabin = Helicopter != nullptr && Settings != nullptr && Settings->IsMuffleOutsideSoundsEnabled();
+	const FVector CabinLocation = Helicopter != nullptr ? Helicopter->GetActorLocation() : FVector::ZeroVector;
+
+	const auto Update = [bInCabin, &CabinLocation](UAudioComponent* Component)
+	{
+		if (Component == nullptr)
+		{
+			return;
+		}
+		const bool bMuffle = bInCabin && Component->bAllowSpatialization &&
+			FVector::DistSquared(Component->GetComponentLocation(), CabinLocation) > FMath::Square(OnBoardRadiusCm);
+		if (Component->bEnableLowPassFilter != bMuffle)
+		{
+			Component->SetLowPassFilterFrequency(MuffleCutoffHz);
+			Component->SetLowPassFilterEnabled(bMuffle);
+		}
+	};
+
+	for (const TObjectPtr<UAudioComponent>& Component : SlotComponents)
+	{
+		Update(Component.Get());
+	}
+	for (const FSimCopterAudioOneShot& Sound : OneShots)
+	{
+		Update(Sound.Component.Get());
+	}
+	for (const TObjectPtr<UAudioComponent>& Component : LooseComponents)
+	{
+		Update(Component.Get());
+	}
+	for (const TObjectPtr<UAudioComponent>& Component : AttachedVoiceLoopComponents)
+	{
+		Update(Component.Get());
 	}
 }
 

@@ -1172,6 +1172,25 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 		USimCopterSettings::DefaultCockpitFov);
 
 	ActiveRows = InputRows;
+	// The Sound page is the original's sound.bmp layout; remake-only audio options live here.
+	AddRow(BuildHeading(LOCTEXT("HeadingAudio", "Audio")));
+
+	AddRow(BuildCheckboxRow(
+		LOCTEXT("MuffleOutsideSounds", "Muffle Outside Sounds in Helicopter"),
+		[this]()
+		{
+			const USimCopterSettings* Settings = GetSettings(this);
+			return Settings == nullptr || Settings->IsMuffleOutsideSoundsEnabled();
+		},
+		[this](const bool bEnabled)
+		{
+			if (USimCopterSettings* Settings = GetSettings(this))
+			{
+				Settings->SetMuffleOutsideSoundsEnabled(bEnabled);
+			}
+		},
+		[]() { return true; }));
+
 	AddRow(BuildHeading(LOCTEXT("HeadingSensitivity", "Sensitivity")));
 
 	const auto AddSensitivityRow = [this, &AddRow](
@@ -1383,6 +1402,7 @@ void SSimCopterGraphicsSettings::CaptureEnteredState()
 		Entered.NightRealMinutes = Settings->GetNightRealMinutes();
 		Entered.HudScale = Settings->GetHudScale();
 		Entered.bMissionMarkersOnScreen = Settings->IsMissionMarkersOnScreenEnabled();
+		Entered.bMuffleOutsideSounds = Settings->IsMuffleOutsideSoundsEnabled();
 		Entered.OnFootFov = Settings->GetOnFootFov();
 		Entered.HelicopterFov = Settings->GetHelicopterFov();
 		Entered.CockpitFov = Settings->GetCockpitFov();
@@ -1437,6 +1457,7 @@ void SSimCopterGraphicsSettings::RestoreEnteredState()
 		Settings->SetNightRealMinutes(Entered.NightRealMinutes);
 		Settings->SetHudScale(Entered.HudScale);
 		Settings->SetMissionMarkersOnScreenEnabled(Entered.bMissionMarkersOnScreen);
+		Settings->SetMuffleOutsideSoundsEnabled(Entered.bMuffleOutsideSounds);
 		Settings->SetOnFootFov(Entered.OnFootFov);
 		Settings->SetHelicopterFov(Entered.HelicopterFov);
 		Settings->SetCockpitFov(Entered.CockpitFov);

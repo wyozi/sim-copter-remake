@@ -408,6 +408,16 @@ private:
 	bool EnsureSlotLoaded(int32 Id);
 	UAudioComponent* EnsureSlotComponent(int32 Id);
 
+	/**
+	 * Remake-only cabin muffling (Settings > Audio): while the player is in the helicopter, every
+	 * spatialised sound farther than OnBoardRadiusCm from it gets a low-pass at MuffleCutoffHz.
+	 * Sounds at the helicopter (its tools, boarding) stay dry, as do the radio, music and every 2D
+	 * sound, which is where the rotor and engine loops play. Only touches a component on change.
+	 */
+	void UpdateOutsideMuffle();
+	static constexpr float MuffleCutoffHz = 900.0f;
+	static constexpr float OnBoardRadiusCm = 1500.0f;
+
 	/** Arms a fresh procedural wave from Clip and starts Component. */
 	bool StartSlot(int32 Id, bool bLoop);
 

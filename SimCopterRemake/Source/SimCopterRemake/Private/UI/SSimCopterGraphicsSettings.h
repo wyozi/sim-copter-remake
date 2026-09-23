@@ -116,6 +116,7 @@ private:
 		float NightRealMinutes = 3.0f;
 		float HudScale = 1.0f;
 		bool bMissionMarkersOnScreen = true;
+		bool bMuffleOutsideSounds = true;
 		float OnFootFov = 78.0f;
 		float HelicopterFov = 78.0f;
 		float CockpitFov = 78.0f;

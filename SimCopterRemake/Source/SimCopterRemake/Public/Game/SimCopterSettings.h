@@ -337,6 +337,14 @@ public:
 	bool IsMissionMarkersOnScreenEnabled() const { return bMissionMarkersOnScreen; }
 	void SetMissionMarkersOnScreenEnabled(bool bEnabled) { bMissionMarkersOnScreen = bEnabled; }
 
+	/**
+	 * Whether world sounds are low-pass filtered while the player is in the helicopter, as if heard
+	 * through the cabin. The helicopter's own sounds, the radio and 2D sounds are never filtered.
+	 * Remake-only. USimCopterAudioSubsystem reads it every tick, so a change is live.
+	 */
+	bool IsMuffleOutsideSoundsEnabled() const { return bMuffleOutsideSounds; }
+	void SetMuffleOutsideSoundsEnabled(bool bEnabled) { bMuffleOutsideSounds = bEnabled; }
+
 	// --- camera and input (profile-wide remake settings) ---
 
 	float GetOnFootFov() const { return OnFootFov; }
@@ -502,6 +510,9 @@ private:
 
 	UPROPERTY(Config)
 	bool bMissionMarkersOnScreen = true;
+
+	UPROPERTY(Config)
+	bool bMuffleOutsideSounds = true;
 
 	UPROPERTY(Config)
 	float OnFootFov = DefaultFov;

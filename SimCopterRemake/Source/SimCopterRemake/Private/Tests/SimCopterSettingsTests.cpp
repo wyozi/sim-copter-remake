@@ -804,8 +804,6 @@ bool FSimCopterGraphicsSettingsPersistenceTest::RunTest(const FString& Parameter
 	return true;
 }
 
-#endif // WITH_DEV_AUTOMATION_TESTS
-
 IMPLEMENT_SIMPLE_AUTOMATION_TEST(
 	FSimCopterRealTimeOfDayTest,
 	"SimCopter.Settings.RealTimeOfDay",
@@ -828,3 +826,5 @@ bool FSimCopterRealTimeOfDayTest::RunTest(const FString& Parameters)
 	TestTrue(TEXT("Local clock hours match FDateTime::Now"), Delta < 2.0f / 3600.0f || Delta > 24.0f - 2.0f / 3600.0f);
 	return true;
 }
+
+#endif // WITH_DEV_AUTOMATION_TESTS

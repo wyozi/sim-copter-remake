@@ -214,6 +214,8 @@ ASimCopterMissionSystemActor::ASimCopterMissionSystemActor()
 void ASimCopterMissionSystemActor::BeginPlay()
 {
 	Super::BeginPlay();
+	PostActorTickHandle = FWorldDelegates::OnWorldPostActorTick.AddUObject(
+		this, &ASimCopterMissionSystemActor::HandleWorldPostActorTick);
 	
 	// Assuming 0 for random seed for parity tests if we want, but normally a real seed.
 	MissionSystem.Initialize(this, 12345);
@@ -262,6 +264,8 @@ void ASimCopterMissionSystemActor::StopMarchingBandAudio()
 
 void ASimCopterMissionSystemActor::EndPlay(const EEndPlayReason::Type EndPlayReason)
 {
+	FWorldDelegates::OnWorldPostActorTick.Remove(PostActorTickHandle);
+	PostActorTickHandle.Reset();
 	StopMarchingBandAudio();
 	for (FSimCopterMedevacHandoff& Handoff : MedevacHandoffs)
 	{
@@ -528,8 +532,16 @@ void ASimCopterMissionSystemActor::Tick(float DeltaTime)
 	{
 		RefreshMessageLogWidget();
 	}
+}
 
-	RefreshMissionMarkerWidget();
+void ASimCopterMissionSystemActor::HandleWorldPostActorTick(UWorld* TickedWorld, ELevelTick TickType, float DeltaSeconds)
+{
+	// Same gate as Tick: nothing is shown while the session is still being set up.
+	const bool bSessionHeld = SessionMode == ESimCopterMissionSessionMode::Pending && bSessionSelectionHeld;
+	if (TickedWorld == GetWorld() && !bSessionHeld)
+	{
+		RefreshMissionMarkerWidget();
+	}
 }
 
 // Diagnostic (SimCopter.Riot.Log). A riot ends when four counters between them reach RiotSize,
@@ -3785,18 +3797,6 @@ void ASimCopterMissionSystemActor::RefreshMissionMarkerWidget()
 	MissionMarkerWidget->SetVisibility(Markers.Num() > 0 ? EVisibility::SelfHitTestInvisible : EVisibility::Collapsed);
 }
 
-bool ASimCopterMissionSystemActor::IsMissionBegun(const SimCopterMissions::FSimCopterMissionRecord& Record) const
-{
-	if (!Record.bActive || Record.TypeMask == 0)
-	{
-		return false;
-	}
-
-	const bool bHasPassengerPickup = (Record.TypeMask & SimCopterMissions::TYPE_Transport) != 0;
-	const bool bHasMedicalPickup = (Record.TypeMask & SimCopterMissions::TYPE_Medevac) != 0;
-	const bool bHasRescuePickup = (Record.TypeMask & SimCopterMissions::TYPE_RescuePeople) != 0;
-
-	if (bHasPassengerPickup)
 void ASimCopterMissionSystemActor::DumpMissionMarkers() const
 {
 	ASimCopterTrafficSystemActor* TrafficSystem = ResolveTrafficSystem();
@@ -3843,6 +3843,18 @@ void ASimCopterMissionSystemActor::DumpMissionMarkers() const
 	}
 }
 
+bool ASimCopterMissionSystemActor::IsMissionBegun(const SimCopterMissions::FSimCopterMissionRecord& Record) const
+{
+	if (!Record.bActive || Record.TypeMask == 0)
+	{
+		return false;
+	}
+
+	const bool bHasPassengerPickup = (Record.TypeMask & SimCopterMissions::TYPE_Transport) != 0;
+	const bool bHasMedicalPickup = (Record.TypeMask & SimCopterMissions::TYPE_Medevac) != 0;
+	const bool bHasRescuePickup = (Record.TypeMask & SimCopterMissions::TYPE_RescuePeople) != 0;
+
+	if (bHasPassengerPickup)
 	{
 		int32 TransportOnboard = 0;
 		if (const UWorld* World = GetWorld())

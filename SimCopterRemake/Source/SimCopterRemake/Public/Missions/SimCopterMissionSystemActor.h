@@ -742,6 +742,11 @@ private:
 	void EnsureMissionMarkerWidget();
 	void RemoveMissionMarkerWidget();
 	void RefreshMissionMarkerWidget();
+	// The tags are projected through the player camera, which UWorld::Tick only updates after
+	// every actor tick group. Refreshed from Tick they used the previous frame's camera and trailed
+	// the view by a frame - 100 ms at 10 fps - so they are refreshed after the camera instead.
+	void HandleWorldPostActorTick(UWorld* TickedWorld, ELevelTick TickType, float DeltaSeconds);
+	FDelegateHandle PostActorTickHandle;
 	void BuildMissionWorldMarkers(TArray<FSimCopterMissionWorldMarkerEntry>& OutMarkers) const;
 	void BuildMissionMarkerUiObstacles(
 		TArray<SimCopterMissionMarkerLayout::FUiObstacle>& OutObstacles) const;

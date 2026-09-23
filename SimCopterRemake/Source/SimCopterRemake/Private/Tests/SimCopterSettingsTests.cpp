@@ -2,6 +2,7 @@
 
 #if WITH_DEV_AUTOMATION_TESTS
 
+#include "City/SimCopterDayNight.h"
 #include "Engine/GameInstance.h"
 #include "Game/SimCopterLowPowerMode.h"
 #include "Game/SimCopterSettings.h"
@@ -804,3 +805,26 @@ bool FSimCopterGraphicsSettingsPersistenceTest::RunTest(const FString& Parameter
 }
 
 #endif // WITH_DEV_AUTOMATION_TESTS
+
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimCopterRealTimeOfDayTest,
+	"SimCopter.Settings.RealTimeOfDay",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterRealTimeOfDayTest::RunTest(const FString& Parameters)
+{
+	const FString RealTimeLabel = USimCopterSettings::GetTimeOfDayModeLabel(ESimCopterTimeOfDayMode::RealTime).ToString();
+	TestEqual(TEXT("Real Time has its own label"), RealTimeLabel, FString(TEXT("Real Time")));
+	TestNotEqual(TEXT("...distinct from Static"), RealTimeLabel,
+		USimCopterSettings::GetTimeOfDayModeLabel(ESimCopterTimeOfDayMode::Static).ToString());
+
+	// The clock the mode pins to is the local wall clock, in the 0..24 hours the day sequence uses.
+	const FDateTime Now = FDateTime::Now();
+	const float Hours = USimCopterDayNightSubsystem::GetLocalClockHours();
+	TestTrue(TEXT("Local clock hours are within a day"), Hours >= 0.0f && Hours < 24.0f);
+	const float Expected = Now.GetHour() + Now.GetMinute() / 60.0f + Now.GetSecond() / 3600.0f;
+	// Tolerant of a second ticking over between the two reads, and of midnight.
+	const float Delta = FMath::Abs(Hours - Expected);
+	TestTrue(TEXT("Local clock hours match FDateTime::Now"), Delta < 2.0f / 3600.0f || Delta > 24.0f - 2.0f / 3600.0f);
+	return true;
+}

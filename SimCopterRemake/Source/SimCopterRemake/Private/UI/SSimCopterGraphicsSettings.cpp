@@ -969,7 +969,7 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 
 	{
 		FRowBinding TimeOfDay;
-		TimeOfDay.GetCount = []() { return 2; };
+		TimeOfDay.GetCount = []() { return 3; };
 		TimeOfDay.GetOptionLabel = [](const int32 Index)
 		{
 			return USimCopterSettings::GetTimeOfDayModeLabel(static_cast<ESimCopterTimeOfDayMode>(Index));

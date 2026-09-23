@@ -555,6 +555,12 @@ bool USimCopterDayNightSubsystem::IsNightForWorld(const UObject* WorldContextObj
 	return Subsystem != nullptr && Subsystem->IsNight();
 }
 
+float USimCopterDayNightSubsystem::GetLocalClockHours()
+{
+	const FDateTime Now = FDateTime::Now();
+	return static_cast<float>(Now.GetHour()) + Now.GetMinute() / 60.0f + Now.GetSecond() / 3600.0f;
+}
+
 void USimCopterDayNightSubsystem::ApplyTimeOfDaySettings()
 {
 	const UWorld* World = GetWorld();
@@ -572,14 +578,22 @@ void USimCopterDayNightSubsystem::ApplyTimeOfDaySettings()
 	}
 
 	const ESimCopterTimeOfDayMode Mode = Settings->GetTimeOfDayMode();
-	const float StaticHours = Settings->GetStaticTimeOfDayHours();
+	const bool bPinned = Mode != ESimCopterTimeOfDayMode::Dynamic;
+	// Real Time pins the clock like Static, to the local wall-clock hour instead of the slider's.
+	const float StaticHours = Mode == ESimCopterTimeOfDayMode::RealTime
+		? GetLocalClockHours()
+		: Settings->GetStaticTimeOfDayHours();
 	const float DayMinutes = Settings->GetDayRealMinutes();
 	const float NightMinutes = Settings->GetNightRealMinutes();
 	const uint8 ModeValue = static_cast<uint8>(Mode);
 
 	const bool bModeUnchanged = ModeValue == AppliedTimeOfDayMode;
-	const bool bStaticHoursUnchanged =
-		Mode == ESimCopterTimeOfDayMode::Dynamic || FMath::IsNearlyEqual(StaticHours, AppliedStaticTimeOfDayHours);
+	// Real Time re-pins every RealTimeRepinHours (10 s of wall clock): smooth enough that the sun
+	// never visibly steps, rare enough that the seek and the window re-roll below stay cheap.
+	const bool bStaticHoursUnchanged = !bPinned ||
+		(Mode == ESimCopterTimeOfDayMode::RealTime
+			? FMath::Abs(StaticHours - AppliedStaticTimeOfDayHours) < RealTimeRepinHours
+			: FMath::IsNearlyEqual(StaticHours, AppliedStaticTimeOfDayHours));
 	const bool bLengthsUnchanged =
 		FMath::IsNearlyEqual(DayMinutes, AppliedDayRealMinutes)
 		&& FMath::IsNearlyEqual(NightMinutes, AppliedNightRealMinutes);
@@ -609,7 +623,7 @@ void USimCopterDayNightSubsystem::ApplyTimeOfDaySettings()
 	AppliedDayRealMinutes = DayMinutes;
 	AppliedNightRealMinutes = NightMinutes;
 
-	if (Mode == ESimCopterTimeOfDayMode::Static)
+	if (bPinned)
 	{
 		// Order matters: SetTimeOfDay scrubs with EUpdatePositionMethod::Play, so it RESUMES the
 		// sequence. Pausing first and seeking second would leave the clock running.
@@ -624,6 +638,11 @@ void USimCopterDayNightSubsystem::ApplyTimeOfDaySettings()
 		DaySequenceActor->Play();
 	}
 
+	// A Real Time re-pin is the clock moving on, not a jump: keep the night edge state so the
+	// windows are not re-rolled every ten seconds after dark. A mode change still counts as a jump.
+	const bool bContinuousRealTimeStep = Mode == ESimCopterTimeOfDayMode::RealTime && bModeUnchanged &&
+		FMath::Abs(StaticHours - AppliedStaticTimeOfDayHours) < 2.0f * RealTimeRepinHours;
+
 	AppliedTimeOfDayMode = ModeValue;
 	AppliedStaticTimeOfDayHours = StaticHours;
 
@@ -631,7 +650,10 @@ void USimCopterDayNightSubsystem::ApplyTimeOfDaySettings()
 	// across it: dragging the Static Time slider from noon to midnight arrives at night without ever
 	// passing through a rising fade. Forget the previous state and let Refresh() re-detect it, which
 	// is what makes "the user activates night from the options" roll a fresh set of windows.
-	bWasNight = false;
+	if (!bContinuousRealTimeStep)
+	{
+		bWasNight = false;
+	}
 
 	// The seek moved the clock; publish the new blend now rather than one frame late.
 	Refresh();
@@ -653,6 +675,11 @@ void USimCopterDayNightSubsystem::ApplyPendingSavedTimeOfDay()
 
 	const float RestoredHours = PendingSavedTimeOfDayHours;
 	PendingSavedTimeOfDayHours = -1.0f;
+	if (Settings->GetTimeOfDayMode() == ESimCopterTimeOfDayMode::RealTime)
+	{
+		// The wall clock decides; ApplyTimeOfDaySettings has already pinned it.
+		return;
+	}
 
 	// SetTimeOfDay scrubs with Play and therefore resumes the player. Reassert the saved mode after
 	// the seek so a Static save remains pinned while a Dynamic save continues from the saved hour.

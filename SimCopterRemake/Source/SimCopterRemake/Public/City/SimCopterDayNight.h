@@ -221,6 +221,10 @@ class SIMCOPTERREMAKE_API USimCopterDayNightSubsystem : public UTickableWorldSub
 	GENERATED_BODY()
 
 public:
+	// Real Time mode: the local wall-clock hour (0..24), re-pinned when it moves this far (10 s).
+	static float GetLocalClockHours();
+	static constexpr float RealTimeRepinHours = 10.0f / 3600.0f;
+
 	static USimCopterDayNightSubsystem* Get(const UObject* WorldContextObject);
 
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
@@ -360,6 +364,7 @@ private:
 	/** The settings only need pushing when they move, not every tick. */
 	uint8 AppliedTimeOfDayMode = 0xff;
 	float AppliedStaticTimeOfDayHours = -1.0f;
+
 	float AppliedDayRealMinutes = -1.0f;
 	float AppliedNightRealMinutes = -1.0f;
 

@@ -126,6 +126,11 @@ enum class ESimCopterTimeOfDayMode : uint8
 	Dynamic = 0,
 	/** The clock is pinned to Static Time Of Day Hours and the day cycle is paused. */
 	Static,
+	/**
+	 * The clock follows the computer's local time: noon outside is noon in the city. Remake-only.
+	 * The day cycle is paused and re-pinned every few seconds, like Static with a moving hour.
+	 */
+	RealTime,
 };
 
 /**

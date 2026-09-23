@@ -90,7 +90,7 @@ bool USimCopterSaveGame::IsStructurallyValid(
 	}
 	if (FormatVersion >= 3 &&
 		(!bHasTimeOfDayState || !FMath::IsFinite(TimeOfDayHours) || TimeOfDayHours < 0.0f || TimeOfDayHours > 24.0f ||
-		 static_cast<uint8>(TimeOfDayMode) > static_cast<uint8>(ESimCopterTimeOfDayMode::Static) ||
+		 static_cast<uint8>(TimeOfDayMode) > static_cast<uint8>(ESimCopterTimeOfDayMode::RealTime) ||
 		 !FMath::IsFinite(StaticTimeOfDayHours) ||
 		 StaticTimeOfDayHours < USimCopterSettings::StaticTimeOfDayMinHours ||
 		 StaticTimeOfDayHours > USimCopterSettings::StaticTimeOfDayMaxHours ||

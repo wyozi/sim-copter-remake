@@ -826,9 +826,12 @@ FText USimCopterSettings::GetAntiAliasingMethodLabel(const ESimCopterAntiAliasin
 
 FText USimCopterSettings::GetTimeOfDayModeLabel(const ESimCopterTimeOfDayMode Mode)
 {
-	return Mode == ESimCopterTimeOfDayMode::Static
-		? LOCTEXT("TimeOfDayStatic", "Static")
-		: LOCTEXT("TimeOfDayDynamic", "Dynamic");
+	switch (Mode)
+	{
+	case ESimCopterTimeOfDayMode::Static:   return LOCTEXT("TimeOfDayStatic", "Static");
+	case ESimCopterTimeOfDayMode::RealTime: return LOCTEXT("TimeOfDayRealTime", "Real Time");
+	default:                                return LOCTEXT("TimeOfDayDynamic", "Dynamic");
+	}
 }
 
 #undef LOCTEXT_NAMESPACE

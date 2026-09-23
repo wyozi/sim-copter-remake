@@ -1913,6 +1913,16 @@ private:
 	// Logs mission map/world marker tiles against where the mission's people actually are.
 	UFUNCTION(Exec)
 	void SimDumpMissionMarkers();
+	// Sets one property on the level's volumetric cloud layer through its setter (so the render
+	// proxy updates): LayerBottomAltitude, LayerHeight, TracingStartMaxDistance, TracingMaxDistance,
+	// ViewSampleCountScale, ShadowViewSampleCountScale, ShadowTracingDistance,
+	// StopTracingTransmittanceThreshold. For measuring cloud cost (Docs/memory/mac-performance.md).
+	UFUNCTION(Exec)
+	void SimCloudSet(const FString& Property, float Value);
+	// Views the world from a fixed camera (world cm, degrees), for benchmark screenshots that need
+	// to look at the sky rather than wherever the helicopter camera points.
+	UFUNCTION(Exec)
+	void SimBenchView(float X, float Y, float Z, float Pitch, float Yaw);
 
 	// Emergency dispatch console commands, so F2-F5 can also be exercised headlessly.
 	// Service: 0 fire truck, 1 police, 2 ambulance (SimCopterDispatch::EService order).

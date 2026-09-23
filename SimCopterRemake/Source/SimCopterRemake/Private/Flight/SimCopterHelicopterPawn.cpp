@@ -52,6 +52,10 @@
 #include "Ground/SimCopterPopulationSprite.h"
 #include "Ground/SimCopterTearGasPool.h"
 #include "EngineUtils.h"
+#include "Components/VolumetricCloudComponent.h"
+#include "UObject/UObjectIterator.h"
+#include "Camera/CameraActor.h"
+#include "Camera/CameraComponent.h"
 #include "Ground/SimCopterTrafficSystemActor.h"
 #include "HAL/FileManager.h"
 #include "InputCoreTypes.h"
@@ -8813,6 +8817,49 @@ void ASimCopterHelicopterPawn::SimGrantTool(int32 ToolIndex, int32 bGranted)
 		*DescribeToolAvailability(Tool),
 		EquipmentState.CareerEquipmentMask,
 		EquipmentState.GetEffectiveEquipmentMask());
+}
+
+void ASimCopterHelicopterPawn::SimBenchView(float X, float Y, float Z, float Pitch, float Yaw)
+{
+	APlayerController* Controller = Cast<APlayerController>(GetController());
+	if (Controller == nullptr || GetWorld() == nullptr)
+	{
+		return;
+	}
+	ACameraActor* Camera = GetWorld()->SpawnActor<ACameraActor>(FVector(X, Y, Z), FRotator(Pitch, Yaw, 0.0f));
+	if (Camera != nullptr)
+	{
+		Camera->GetCameraComponent()->SetFieldOfView(90.0f);
+		Controller->SetViewTarget(Camera);
+	}
+}
+
+void ASimCopterHelicopterPawn::SimCloudSet(const FString& Property, float Value)
+{
+	int32 Updated = 0;
+	for (TObjectIterator<UVolumetricCloudComponent> It; It; ++It)
+	{
+		UVolumetricCloudComponent* Cloud = *It;
+		if (Cloud->GetWorld() != GetWorld())
+		{
+			continue;
+		}
+		if (Property == TEXT("LayerBottomAltitude")) Cloud->SetLayerBottomAltitude(Value);
+		else if (Property == TEXT("LayerHeight")) Cloud->SetLayerHeight(Value);
+		else if (Property == TEXT("TracingStartMaxDistance")) Cloud->SetTracingStartMaxDistance(Value);
+		else if (Property == TEXT("TracingMaxDistance")) Cloud->SetTracingMaxDistance(Value);
+		else if (Property == TEXT("ViewSampleCountScale")) Cloud->SetViewSampleCountScale(Value);
+		else if (Property == TEXT("ShadowViewSampleCountScale")) Cloud->SetShadowViewSampleCountScale(Value);
+		else if (Property == TEXT("ShadowTracingDistance")) Cloud->SetShadowTracingDistance(Value);
+		else if (Property == TEXT("StopTracingTransmittanceThreshold")) Cloud->SetStopTracingTransmittanceThreshold(Value);
+		else
+		{
+			UE_LOG(LogSimCopterHelicopterPawn, Warning, TEXT("SimCloudSet: unknown property '%s'."), *Property);
+			return;
+		}
+		++Updated;
+	}
+	UE_LOG(LogSimCopterHelicopterPawn, Display, TEXT("SimCloudSet: %s = %g on %d cloud component(s)."), *Property, Value, Updated);
 }
 
 void ASimCopterHelicopterPawn::SimDumpMissionMarkers()

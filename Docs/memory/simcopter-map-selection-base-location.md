@@ -81,8 +81,9 @@ Every write, exhaustively (xrefs to 0x0057f9d8):
 - `FUN_004a73e0` clears `+0x38` when `pickedUp(+0xa4) + dead(+0xb4) + lost(+0xbc) == passengers(+0x88)`.
   It completes the record on `delivered(+0x9c) + dead + lost == passengers`.
 - **Medevac (0x20) leaves `+0x30` at -1** and puts the patient at `+0x28`, which is cleared on
-  pickup. The remake stores its hospital in `+0x30` for its own hand-off, so the map panel hides it
-  (`SSimCopterMapPanel::BuildFrame`) so the map shows what the original record would.
+  pickup. Since 2026-09-23 the remake does the same: any hospital takes the patient (see
+  [paramedic handoffs](simcopter-paramedic-handoffs.md)). The map panel no longer needs to hide an
+  invented hospital.
 
 ## The four player-reported claims (verdicts)
 

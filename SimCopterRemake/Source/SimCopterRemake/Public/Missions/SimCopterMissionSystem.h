@@ -818,9 +818,6 @@ private:
 	void AnnounceCreated(const FSimCopterMissionRecord& Record); // trailer of FUN_004a7a10
 	void PostAnnouncementVoice(const FSimCopterMissionRecord& Record); // FUN_004ab480
 	static int32 GetTypeTextId(int32 TypeMask);   // shared 0x23b..0x24b switch
-	bool FindDefaultDestinationTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const;
-	// Nearest hospital tile (XBLD id 0xD1 / HO209) to the origin - the medevac drop-off.
-	bool FindNearestHospitalTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const;
 
 	// FUN_004a73e0 / FUN_004aabf0.
 	void UpdateLifecycle();

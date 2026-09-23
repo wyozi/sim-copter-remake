@@ -310,15 +310,6 @@ bool SSimCopterMapPanel::BuildFrame(FSimCopterMapFrame& OutFrame)
 			Mission.Tile = FIntPoint(Record.TileX, Record.TileY);
 			Mission.Secondary = FIntPoint(Record.SecondaryX, Record.SecondaryY);
 			Mission.Tertiary = FIntPoint(Record.TertiaryX, Record.TertiaryY);
-			// REMAKE DATA, hidden from the map: the remake parks a medevac's hospital in +0x30 for its
-			// own hand-off code, where FUN_004a7a10's 0x20 branch leaves -1. Shown as the original
-			// record reads, the map points at the patient (+0x28) until they are picked up, not at
-			// the hospital. A transport that picked up the medevac bit keeps its real drop-off.
-			if ((Record.TypeMask & SimCopterMissions::TYPE_Medevac) != 0 &&
-				(Record.TypeMask & SimCopterMissions::TYPE_Transport) == 0)
-			{
-				Mission.Secondary = FIntPoint(INDEX_NONE, INDEX_NONE);
-			}
 			OutFrame.Missions.Add(MoveTemp(Mission));
 		}
 

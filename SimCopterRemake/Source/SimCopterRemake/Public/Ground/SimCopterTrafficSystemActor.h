@@ -295,6 +295,18 @@ public:
 	// HospitalParamedicRespawnDelaySeconds after the last time one was actually seen standing there.
 	ASimCopterGroundAgent* EnsureHospitalParamedicAtTile(int32 TileX, int32 TileY);
 
+	// One hospital (XBLD 0xD1, HO209) in the loaded city: the origin tile of its footprint - what
+	// EnsureHospitalParamedicAtTile and the roof-post cache are keyed on - and the footprint's
+	// world centre.
+	struct FHospitalSite
+	{
+		FIntPoint OriginTile = FIntPoint(INDEX_NONE, INDEX_NONE);
+		FVector Center = FVector::ZeroVector;
+	};
+	// Every hospital footprint in the city, from the people scene's per-footprint nodes (one node
+	// per building, so a 3x3 hospital is reported once). Empty for a city with no hospital.
+	void GetHospitalSites(TArray<FHospitalSite>& OutSites) const;
+
 	UPROPERTY(EditAnywhere, Category = "SimCopter|Traffic", meta = (ClampMin = "0.0"))
 	float HospitalParamedicRespawnDelaySeconds = 40.0f;
 
@@ -793,6 +805,7 @@ private:
 	bool BeginTunnelTransit(ASimCopterGroundAgent& Agent, int32 EntryNode, int32 ApproachNode);
 	void UpdateTunnelTransits(float DeltaSeconds);
 	friend class FSimCopterParamedicCabinHandoffTest;
+	friend class FSimCopterHospitalSitesTest;
 	friend class FSimCopterPoliceRoofBoardingTest;
 	TArray<FSimCopterGroundRouteNode> RoadNodes;
 	TArray<FSimCopterGroundRouteNode> PedestrianNodes;

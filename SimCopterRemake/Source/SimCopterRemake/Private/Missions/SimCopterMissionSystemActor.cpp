@@ -273,7 +273,6 @@ void ASimCopterMissionSystemActor::EndPlay(const EEndPlayReason::Type EndPlayRea
 		EndMedevacHandoff(Handoff, /*bResolvePatients*/ false);
 	}
 	MedevacHandoffs.Reset();
-	MedevacHospitalTiles.Reset();
 
 	RemoveMissionMarkerWidget();
 	RemoveMessageLogWidget();
@@ -298,14 +297,11 @@ bool ASimCopterMissionSystemActor::CaptureRuntimeSaveState(TArray<uint8>& OutDat
 	Writer << Mode << SelectionHeld << SessionElapsedSeconds;
 	Writer << ServiceJetSweep.Elevation1616 << ServiceJetSweep.Step1616;
 
-	int32 HospitalCount = MedevacHospitalTiles.Num();
+	// Formerly a per-event hospital table (count + {event id, tile} pairs). Medevacs are now served
+	// at any hospital, so there is nothing to save; the empty block keeps the version-1 layout, and
+	// the reader skips whatever an older save wrote here.
+	int32 HospitalCount = 0;
 	Writer << HospitalCount;
-	for (const TPair<int32, FIntPoint>& Pair : MedevacHospitalTiles)
-	{
-		int32 EventId = Pair.Key;
-		FIntPoint Tile = Pair.Value;
-		Writer << EventId << Tile;
-	}
 
 	int32 LogCount = MissionMessageLog.Num();
 	Writer << LogCount;
@@ -387,13 +383,12 @@ bool ASimCopterMissionSystemActor::RestoreRuntimeSaveState(const TArray<uint8>& 
 	{
 		return false;
 	}
-	MedevacHospitalTiles.Reset();
 	for (int32 Index = 0; Index < HospitalCount; ++Index)
 	{
+		// An older save's per-event hospital: read past it. Any hospital serves the patient now.
 		int32 EventId = INDEX_NONE;
 		FIntPoint Tile = FIntPoint::ZeroValue;
 		Reader << EventId << Tile;
-		MedevacHospitalTiles.Add(EventId, Tile);
 	}
 
 	int32 LogCount = 0;
@@ -2628,8 +2623,10 @@ void ASimCopterMissionSystemActor::ProcessPassengerTransfers(const float DeltaSe
 		// A transport waits at +0x38 (FUN_004a7a10's 0x40 branch); a medevac patient lies at +0x28.
 		Snapshot.PickupX = bTransport ? Record.TertiaryX : Record.TileX;
 		Snapshot.PickupY = bTransport ? Record.TertiaryY : Record.TileY;
-		Snapshot.DropoffX = Record.SecondaryX;
-		Snapshot.DropoffY = Record.SecondaryY;
+		// Only a transport has a drop-off tile (+0x30). A medevac patient goes to any hospital,
+		// which ProcessMedevacHospitalHandoffs serves.
+		Snapshot.DropoffX = bTransport ? Record.SecondaryX : INDEX_NONE;
+		Snapshot.DropoffY = bTransport ? Record.SecondaryY : INDEX_NONE;
 		Snapshot.bTransport = bTransport;
 		Snapshot.bMedevac = bMedevac;
 		if (bTransport)
@@ -2937,28 +2934,23 @@ void ASimCopterMissionSystemActor::ProcessMedevacHospitalHandoffs(float DeltaSec
 {
 	ASimCopterTrafficSystemActor* TrafficSystem = ResolveTrafficSystem();
 
-	// Cache every active medevac's hospital before lifecycle completion clears its record type.
-	// A casualty can complete the scoring record while their real body is still occupying a seat.
-	TSet<int32> ActiveMedevacEvents;
-	if (TrafficSystem != nullptr)
+	// A medevac has no hospital of its own. FUN_004a7a10's 0x20 branch never writes +0x30: the
+	// patient is delivered at WHICHEVER hospital the player lands on - FUN_004c25b0 posts the
+	// class 0x0c / state 5 medic on every XBLD 0xD1, BHAV 801 -> 263 has that medic take the patient
+	// out of the cabin, and BHAV 282 recognises XBLD 209 and posts the delivery. So the service
+	// below is per hospital, and the events it serves are simply the ones that still need one.
+	TSet<int32> MedevacEventsNeedingService;
+	for (const SimCopterMissions::FSimCopterMissionRecord& Record : MissionSystem.GetRecords())
 	{
-		for (const SimCopterMissions::FSimCopterMissionRecord& Record : MissionSystem.GetRecords())
+		if (Record.bActive && (Record.TypeMask & SimCopterMissions::TYPE_Medevac) != 0)
 		{
-			if (!Record.bActive || (Record.TypeMask & SimCopterMissions::TYPE_Medevac) == 0)
-			{
-				continue;
-			}
-			ActiveMedevacEvents.Add(Record.EventId);
-			if (!IsValidMissionTile(Record.SecondaryX, Record.SecondaryY))
-			{
-				continue;
-			}
-			MedevacHospitalTiles.Add(Record.EventId, FIntPoint(Record.SecondaryX, Record.SecondaryY));
+			MedevacEventsNeedingService.Add(Record.EventId);
 		}
 	}
 
-	// See every seat, not only landed helicopters. An inactive casualty record must retain its
-	// hospital service while the body is still being flown there.
+	// See every seat, not only landed helicopters. A casualty completes the scoring record (its
+	// type is cleared) while the real body can still be occupying a seat; that event keeps the
+	// hospital service until the last body has actually left the cabin.
 	TArray<AActor*> HelicopterActors;
 	if (GetWorld() != nullptr)
 	{
@@ -2967,7 +2959,6 @@ void ASimCopterMissionSystemActor::ProcessMedevacHospitalHandoffs(float DeltaSec
 			ASimCopterHelicopterPawn::StaticClass(),
 			HelicopterActors);
 	}
-	TArray<ASimCopterHelicopterPawn*> AllHelicopters;
 	TArray<ASimCopterHelicopterPawn*> Helicopters;
 	for (AActor* Actor : HelicopterActors)
 	{
@@ -2976,64 +2967,44 @@ void ASimCopterMissionSystemActor::ProcessMedevacHospitalHandoffs(float DeltaSec
 		{
 			continue;
 		}
-		AllHelicopters.Add(Helicopter);
+		for (const FSimCopterMissionPassengerSlot& Slot : Helicopter->GetMissionPassengerSlots())
+		{
+			if (Slot.Kind == ESimCopterMissionPassengerKind::Medevac && Slot.EventId != INDEX_NONE)
+			{
+				MedevacEventsNeedingService.Add(Slot.EventId);
+			}
+		}
 		if (Helicopter->CanTransferMissionPassengers())
 		{
 			Helicopters.Add(Helicopter);
 		}
 	}
-
-	// Keep a mission-required state-5 worker physically posted on every relevant hospital roof.
-	// The post remains required for an active mission anywhere in the city, and after a casualty
-	// until the last body has actually left the cabin.
-	TMap<int32, FVector> MedevacDropoffs;
-	if (TrafficSystem != nullptr)
+	for (const FSimCopterMedevacHandoff& Handoff : MedevacHandoffs)
 	{
-		for (auto It = MedevacHospitalTiles.CreateIterator(); It; ++It)
+		MedevacEventsNeedingService.Add(Handoff.EventId);
+	}
+
+	// Keep a state-5 worker physically posted on EVERY hospital roof while any medevac anywhere
+	// still needs one - the player may land on any of them.
+	TArray<ASimCopterTrafficSystemActor::FHospitalSite> Hospitals;
+	if (TrafficSystem != nullptr && MedevacEventsNeedingService.Num() > 0)
+	{
+		TrafficSystem->GetHospitalSites(Hospitals);
+		for (const ASimCopterTrafficSystemActor::FHospitalSite& Hospital : Hospitals)
 		{
-			const int32 EventId = It.Key();
-			bool bHasPatientAboard = false;
-			for (const ASimCopterHelicopterPawn* Helicopter : AllHelicopters)
-			{
-				if (Helicopter != nullptr &&
-					Helicopter->GetMissionPassengerCount(
-						EventId,
-						ESimCopterMissionPassengerKind::Medevac) > 0)
-				{
-					bHasPatientAboard = true;
-					break;
-				}
-			}
-
-			if (!ActiveMedevacEvents.Contains(EventId) &&
-				!bHasPatientAboard &&
-				FindMedevacHandoff(EventId) == nullptr)
-			{
-				It.RemoveCurrent();
-				continue;
-			}
-
-			const FIntPoint HospitalTile = It.Value();
-			FVector HospitalLocation = FVector::ZeroVector;
-			if (TrafficSystem->TryGetTileCenterWorldLocation(
-					HospitalTile.X,
-					HospitalTile.Y,
-					HospitalLocation))
-			{
-				MedevacDropoffs.Add(EventId, HospitalLocation);
-				TrafficSystem->EnsureHospitalParamedicAtTile(HospitalTile.X, HospitalTile.Y);
-			}
+			TrafficSystem->EnsureHospitalParamedicAtTile(Hospital.OriginTile.X, Hospital.OriginTile.Y);
 		}
 	}
 
-	// Start a handoff for any landed helicopter that is at a hospital with patients still aboard.
-	for (const TPair<int32, FVector>& Pair : MedevacDropoffs)
+	// Start a handoff for a helicopter that has set down at any hospital with patients of an event
+	// still aboard.
+	for (const int32 EventId : MedevacEventsNeedingService)
 	{
-		const int32 EventId = Pair.Key;
 		if (FindMedevacHandoff(EventId) != nullptr)
 		{
 			continue;
 		}
+		bool bStarted = false;
 		for (ASimCopterHelicopterPawn* Helicopter : Helicopters)
 		{
 			if (Helicopter == nullptr ||
@@ -3041,19 +3012,29 @@ void ASimCopterMissionSystemActor::ProcessMedevacHospitalHandoffs(float DeltaSec
 			{
 				continue;
 			}
-			if (FVector::DistSquared2D(Helicopter->GetActorLocation(), Pair.Value) > FMath::Square(MedevacHospitalHandoffRadiusCm))
+			for (const ASimCopterTrafficSystemActor::FHospitalSite& Hospital : Hospitals)
 			{
-				continue;
+				if (FVector::DistSquared2D(Helicopter->GetActorLocation(), Hospital.Center) >
+					FMath::Square(MedevacHospitalHandoffRadiusCm))
+				{
+					continue;
+				}
+				BeginMedevacHandoff(EventId, Helicopter, Hospital.Center);
+				bStarted = true;
+				break;
 			}
-			BeginMedevacHandoff(EventId, Helicopter, Pair.Value);
-			break;
+			if (bStarted)
+			{
+				break;
+			}
 		}
 	}
 
-	// Advance and clean up in-progress handoffs.
+	// Advance and clean up in-progress handoffs. A handoff ends when its event no longer needs a
+	// hospital (the helicopter then has no patient of it aboard) or when AdvanceMedevacHandoff says so.
 	for (int32 Index = MedevacHandoffs.Num() - 1; Index >= 0; --Index)
 	{
-		if (!MedevacDropoffs.Contains(MedevacHandoffs[Index].EventId) ||
+		if (!MedevacEventsNeedingService.Contains(MedevacHandoffs[Index].EventId) ||
 			!AdvanceMedevacHandoff(MedevacHandoffs[Index], DeltaSeconds))
 		{
 			EndMedevacHandoff(MedevacHandoffs[Index]);
@@ -3975,6 +3956,13 @@ void ASimCopterMissionSystemActor::BuildMissionWorldMarkers(TArray<FSimCopterMis
 		OutMarkers.Add(Marker);
 	};
 
+	// Only a medevac with a patient aboard needs these, so the hospitals are gathered lazily.
+	const ASimCopterHelicopterPawn* PlayerHelicopter = GetWorld() != nullptr
+		? Cast<ASimCopterHelicopterPawn>(UGameplayStatics::GetPlayerPawn(GetWorld(), 0))
+		: nullptr;
+	TArray<ASimCopterTrafficSystemActor::FHospitalSite> Hospitals;
+	bool bHospitalsGathered = false;
+
 	for (const SimCopterMissions::FSimCopterMissionRecord& Record : MissionSystem.GetRecords())
 	{
 		if (!Record.bActive || Record.TypeMask == 0)
@@ -4011,9 +3999,41 @@ void ASimCopterMissionSystemActor::BuildMissionWorldMarkers(TArray<FSimCopterMis
 
 		if (bHasMedicalPickup)
 		{
-			if (bBegun && bHasDropoff)
+			// A medevac record has no drop-off (+0x30 stays -1): any hospital takes the patient. So
+			// while one of this event's patients is aboard the player's helicopter, the tag points
+			// at whichever hospital is nearest the helicopter right now; with no hospital in the
+			// city there is no tag. Otherwise it marks the patient at +0x28, which FUN_004a73e0
+			// clears once everybody is picked up.
+			const int32 PatientsAboard = PlayerHelicopter != nullptr
+				? PlayerHelicopter->GetMissionPassengerCount(Record.EventId, ESimCopterMissionPassengerKind::Medevac)
+				: 0;
+			if (PatientsAboard > 0)
 			{
-				AddTileMarker(Record.SecondaryX, Record.SecondaryY, TEXT("HOSPITAL"), Record.Name, FLinearColor(0.05f, 0.72f, 0.32f, 1.0f));
+				if (!bHospitalsGathered && TrafficSystem != nullptr)
+				{
+					TrafficSystem->GetHospitalSites(Hospitals);
+					bHospitalsGathered = true;
+				}
+				const ASimCopterTrafficSystemActor::FHospitalSite* Nearest = nullptr;
+				float NearestDistanceSq = TNumericLimits<float>::Max();
+				for (const ASimCopterTrafficSystemActor::FHospitalSite& Hospital : Hospitals)
+				{
+					const float DistanceSq = FVector::DistSquared2D(PlayerHelicopter->GetActorLocation(), Hospital.Center);
+					if (DistanceSq < NearestDistanceSq)
+					{
+						NearestDistanceSq = DistanceSq;
+						Nearest = &Hospital;
+					}
+				}
+				if (Nearest != nullptr)
+				{
+					FSimCopterMissionWorldMarkerEntry Marker;
+					Marker.WorldLocation = Nearest->Center;
+					Marker.Label = TEXT("HOSPITAL");
+					Marker.Detail = Record.Name;
+					Marker.Color = FLinearColor(0.05f, 0.72f, 0.32f, 1.0f);
+					OutMarkers.Add(Marker);
+				}
 			}
 			else
 			{

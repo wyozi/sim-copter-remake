@@ -2799,6 +2799,21 @@ bool ASimCopterTrafficSystemActor::TryGetBuildingRoofPost(
 	return true;
 }
 
+void ASimCopterTrafficSystemActor::GetHospitalSites(TArray<FHospitalSite>& OutSites) const
+{
+	OutSites.Reset();
+	for (const FSimCopterGroundRouteNode& Node : PedestrianNodes)
+	{
+		if (Node.BuildingId != 0xD1)
+		{
+			continue;
+		}
+		FHospitalSite& Site = OutSites.AddDefaulted_GetRef();
+		Site.OriginTile = FIntPoint(Node.FileX, Node.FileY);
+		Site.Center = Node.Location;
+	}
+}
+
 ASimCopterGroundAgent* ASimCopterTrafficSystemActor::EnsureHospitalParamedicAtTile(
 	const int32 TileX,
 	const int32 TileY)

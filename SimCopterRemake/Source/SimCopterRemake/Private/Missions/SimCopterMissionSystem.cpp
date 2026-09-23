@@ -1068,104 +1068,6 @@ const TCHAR* FSimCopterMissionSystem::GetTypeDisplayName(int32 TypeMask)
 	return TEXT("Mission");
 }
 
-bool FSimCopterMissionSystem::FindNearestHospitalTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const
-{
-	if (World == nullptr)
-	{
-		return false;
-	}
-
-	// HO209 = XBLD building id 209 = 0xD1 (a 3x3 hospital). Injured people are delivered here.
-	constexpr int32 HospitalXbldId = 0xD1;
-	int32 BestX = -1;
-	int32 BestY = -1;
-	int32 BestDistSq = TNumericLimits<int32>::Max();
-	for (int32 Y = 0; Y < 128; ++Y)
-	{
-		for (int32 X = 0; X < 128; ++X)
-		{
-			if (World->GetXbldTileId(X, Y) != HospitalXbldId)
-			{
-				continue;
-			}
-			const int32 Dx = X - OriginX;
-			const int32 Dy = Y - OriginY;
-			const int32 DistSq = Dx * Dx + Dy * Dy;
-			if (DistSq < BestDistSq)
-			{
-				BestDistSq = DistSq;
-				BestX = X;
-				BestY = Y;
-			}
-		}
-	}
-
-	if (BestX < 0)
-	{
-		return false;
-	}
-	OutX = BestX;
-	OutY = BestY;
-	return true;
-}
-
-bool FSimCopterMissionSystem::FindDefaultDestinationTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const
-{
-	// PLACEHOLDER, not a port, and now only the medevac fallback for a city with no hospital. (It was
-	// the transport destination until FUN_004a7a10's 0x40 branch was read: the destination is the
-	// placer's own tile, copied into +0x30, and the pickup is FUN_004abb30 around it in +0x38.)
-	// Picks the nearest building at least MinDistance tiles away, preferring occupied ones (XBLD
-	// flag 0x04) and falling back to any real building (0x02). Buildings never stand in water: the old
-	// version sampled only 80 tiles along eight compass rays, and once GetXbldPropertyFlags became the
-	// real table (39 occupied ids) it almost always missed and fell through to the unchecked mirror
-	// tile below - which on Sea Cliff, 76% water, is usually open sea.
-	constexpr int32 MinDistance = 14;
-
-	auto FindNearestWithFlag = [this, OriginX, OriginY](const uint8 RequiredFlag, int32& BestX, int32& BestY) -> bool
-	{
-		int32 BestDistanceSquared = MAX_int32;
-		for (int32 Y = 0; Y < 128; ++Y)
-		{
-			for (int32 X = 0; X < 128; ++X)
-			{
-				const int32 DX = X - OriginX;
-				const int32 DY = Y - OriginY;
-				if (FMath::Max(FMath::Abs(DX), FMath::Abs(DY)) < MinDistance)
-				{
-					continue;
-				}
-				const int32 DistanceSquared = DX * DX + DY * DY;
-				if (DistanceSquared < BestDistanceSquared &&
-					(GetXbldPropertyFlags(World->GetXbldTileId(X, Y)) & RequiredFlag) != 0)
-				{
-					BestDistanceSquared = DistanceSquared;
-					BestX = X;
-					BestY = Y;
-				}
-			}
-		}
-		return BestDistanceSquared != MAX_int32;
-	};
-
-	if (World != nullptr &&
-		(FindNearestWithFlag(0x04, OutX, OutY) || FindNearestWithFlag(0x02, OutX, OutY)))
-	{
-		return true;
-	}
-
-	// Only a world with no buildings at all (the test stubs) gets here.
-	const int32 MirrorX = FMath::Clamp(127 - OriginX, 0, 127);
-	const int32 MirrorY = FMath::Clamp(127 - OriginY, 0, 127);
-	if (MirrorX != OriginX || MirrorY != OriginY)
-	{
-		OutX = MirrorX;
-		OutY = MirrorY;
-		return true;
-	}
-
-	return false;
-}
-
 int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 {
 	// SCHOOK: CreateMission 0x004a7a10. The creator walks the live record table and refuses a
@@ -1295,12 +1197,10 @@ int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 		}
 		Rec.Name = FString::Printf(TEXT("MedEvac #%d"), TypeSerials[2]);
 		TypeSerials[2]++;
-		// Deliver injured people to the nearest hospital; fall back to a generic mission building
-		// if the city has no hospital.
-		if (!FindNearestHospitalTile(TX, TY, Rec.SecondaryX, Rec.SecondaryY))
-		{
-			FindDefaultDestinationTile(TX, TY, Rec.SecondaryX, Rec.SecondaryY);
-		}
+		// FUN_004a7a10's 0x20 branch writes the patient tile to +0x28/+0x2c and nothing else: +0x30
+		// stays -1 (the only +0x30 write in the function is the transport copy). A medevac has no
+		// destination of its own - ANY hospital takes the patient (BHAV 801 -> 263 on XBLD 0xD1, BHAV
+		// 282 posts the delivery), which the mission actor serves.
 	}
 	else if (TypeMask == TYPE_TrainCrash)
 	{
@@ -1635,11 +1535,7 @@ int32 FSimCopterMissionSystem::CreatePlayerCausedMedevacAt(int32 TileX, int32 Ti
 	}
 	Rec.Name = FString::Printf(TEXT("MedEvac #%d"), TypeSerials[2]);
 	TypeSerials[2]++;
-
-	if (!FindNearestHospitalTile(TileX, TileY, Rec.SecondaryX, Rec.SecondaryY))
-	{
-		FindDefaultDestinationTile(TileX, TileY, Rec.SecondaryX, Rec.SecondaryY);
-	}
+	// Like the scheduled 0x20 record, no +0x30: any hospital takes the patient.
 
 	AnnounceCreated(Rec);
 	return Rec.EventId;
@@ -3431,6 +3327,15 @@ bool FSimCopterMissionSystem::SerializeRuntimeState(FArchive& Archive)
 
 		for (FSimCopterMissionRecord& Record : Records)
 		{
+			// Saves written before the medevac record was ported carry a remake-chosen hospital in
+			// +0x30. FUN_004a7a10's 0x20 branch never writes it (any hospital takes the patient), so
+			// drop it. A transport that picked up the medevac bit keeps its real drop-off.
+			if ((Record.TypeMask & TYPE_Medevac) != 0 && (Record.TypeMask & TYPE_Transport) == 0)
+			{
+				Record.SecondaryX = -1;
+				Record.SecondaryY = -1;
+			}
+
 			// Saves written before the transport layout was ported kept the pickup in +0x28 and the
 			// destination in +0x30, with +0x38 unused. The ported record always has +0x30 == +0x28,
 			// so a live transport whose two differ is the old shape: move the destination into

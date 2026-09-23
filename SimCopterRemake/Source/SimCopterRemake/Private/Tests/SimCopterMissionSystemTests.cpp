@@ -2665,3 +2665,65 @@ bool FSimCopterMissionSaveFocusAndLayoutTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("Drop-off unchanged"), Moved->SecondaryX, 20);
 	return true;
 }
+
+// FUN_004a7a10's 0x20 branch writes the patient tile to +0x28/+0x2c and never touches +0x30 - the
+// only +0x30 write in the function is the transport copy. A medevac is delivered at any hospital.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimCopterMedevacRecordLayoutTest,
+	"SimCopter.Missions.MedevacRecordLayout",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterMedevacRecordLayoutTest::RunTest(const FString& Parameters)
+{
+	FSimCopterTestMissionWorld World;
+	FSimCopterMissionSystem System;
+	System.Initialize(&World, 1);
+
+	const int32 ScheduledId = System.CreateEventAt(30, 31, TYPE_Medevac);
+	const FSimCopterMissionRecord* Scheduled = System.FindRecord(ScheduledId);
+	if (!TestNotNull(TEXT("Scheduled medevac created"), Scheduled))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Patient tile X at +0x28"), Scheduled->TileX, 30);
+	TestEqual(TEXT("Patient tile Y at +0x2c"), Scheduled->TileY, 31);
+	TestEqual(TEXT("No +0x30 drop-off (X)"), Scheduled->SecondaryX, -1);
+	TestEqual(TEXT("No +0x30 drop-off (Y)"), Scheduled->SecondaryY, -1);
+	TestEqual(TEXT("No +0x38"), Scheduled->TertiaryX, -1);
+
+	const int32 CausedId = System.CreatePlayerCausedMedevacAt(40, 41);
+	const FSimCopterMissionRecord* Caused = System.FindRecord(CausedId);
+	if (!TestNotNull(TEXT("Player-caused medevac created"), Caused))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Player-caused medevac has no +0x30 either"), Caused->SecondaryX, -1);
+
+	// A save from before this port carries a remake-chosen hospital in +0x30; loading drops it.
+	FSimCopterMissionEvent Hospital;
+	Hospital.Code = EVT_SetSecondaryCoords;
+	Hospital.EventId = ScheduledId;
+	Hospital.X = 91;
+	Hospital.Y = 62;
+	Hospital.bSilent = true;
+	System.PostEvent(Hospital);
+	TestEqual(TEXT("Fixture has the legacy hospital"), System.FindRecord(ScheduledId)->SecondaryX, 91);
+
+	TArray<uint8> Bytes;
+	FMemoryWriter Writer(Bytes, true);
+	System.SerializeRuntimeState(Writer);
+	Writer.Close();
+	FSimCopterMissionSystem Restored;
+	Restored.Initialize(&World, 1);
+	FMemoryReader Reader(Bytes, true);
+	TestTrue(TEXT("Reads"), Restored.SerializeRuntimeState(Reader));
+	const FSimCopterMissionRecord* Loaded = Restored.FindRecord(ScheduledId);
+	if (!TestNotNull(TEXT("Medevac survives the save"), Loaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Loading clears a legacy medevac +0x30 (X)"), Loaded->SecondaryX, -1);
+	TestEqual(TEXT("Loading clears a legacy medevac +0x30 (Y)"), Loaded->SecondaryY, -1);
+	TestEqual(TEXT("The patient tile is kept"), Loaded->TileX, 30);
+	return true;
+}

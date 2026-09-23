@@ -552,13 +552,14 @@ private:
 	UPROPERTY(EditAnywhere, Category = "SimCopter|Missions", meta = (ClampMin = "50.0"))
 	float RescueDropoffHeightCm = 600.0f;
 
-	// How close the helicopter (with medevac patients aboard) must be to the hospital drop-off tile
-	// before the EMT comes out to unload it - and the radius the posted roof crew is looked for in.
+	// How close the helicopter (with medevac patients aboard) must be to a hospital's footprint
+	// centre before the EMT comes out to unload it - and the radius the posted roof crew is looked
+	// for in. Any hospital (XBLD 0xD1) qualifies.
 	//
 	// 1500 cm was nearly four city tiles: the crew set off toward a helicopter that had merely
 	// landed in the neighbourhood, and the watchdog below started ticking on it. 900 is a little
-	// over two tiles, which covers a 3x3 hospital from its recorded tile whether that tile is the
-	// footprint's centre or a corner, and not much beyond the building itself.
+	// over two tiles: measured from the footprint centre it covers a 3x3 hospital's roof and pads and
+	// not much beyond the building itself.
 	UPROPERTY(EditAnywhere, Category = "SimCopter|Missions", meta = (ClampMin = "100.0"))
 	float MedevacHospitalHandoffRadiusCm = 900.0f;
 
@@ -656,9 +657,6 @@ private:
 	TSharedPtr<SWidget> MissionMarkerWidget;
 	TSharedPtr<SConstraintCanvas> MissionMarkerCanvas;
 	TArray<FSimCopterMedevacHandoff> MedevacHandoffs;
-	// Mission records clear their type when the casualty counter completes them. Keep the hospital
-	// tile until every real medevac seat (including a deceased patient) has been unloaded.
-	TMap<int32, FIntPoint> MedevacHospitalTiles;
 
 	// The burning-building loop (id 0x0d) is one voice for the whole city: FUN_004a4ac0 keeps
 	// picking the nearest fire and calling SetPosition on that single slot, so a second fire

@@ -51,6 +51,44 @@ test, posts medevac-delivered outcome 1, and leaves the map. There is no popup
 building, temporary doorway, replacement patient, or paramedic-owned delivery
 counter in this graph.
 
+## Any hospital takes the patient (2026-09-23)
+
+**A medevac record has no destination.** `FUN_004a7a10`'s 0x20 branch writes only `+0x28/+0x2c`
+(the patient tile). It spawns `rand() % tier + 1` state-6 people there and **never writes `+0x30`**:
+the only `+0x30` write in the whole function is the transport's copy of `+0x28`. The hospital is
+wherever the player lands:
+- `FUN_004c25b0` posts a class 0x0c / state 5 medic on every XBLD D1;
+- BHAV 801 at D1 runs BHAV 263, the roof medic taking the patient;
+- BHAV 282 recognises XBLD 209 and posts medevac-delivered.
+
+Street ambulances (BHAV 262) collect patients too.
+
+What the remake had before was its own invention: the medevac record carried a nearest hospital
+in `+0x30`, or `FindDefaultDestinationTile`'s "nearest building 14+ tiles away" when the city had
+none, and `MedevacHospitalTiles` served only that one roof. That is all gone. Now:
+- The core leaves `+0x30` at -1 for both the scheduled record and `CreatePlayerCausedMedevacAt`.
+  `FindDefaultDestinationTile` and `FindNearestHospitalTile` are deleted.
+- `ASimCopterTrafficSystemActor::GetHospitalSites` lists every D1 footprint, once per building from
+  the per-footprint pedestrian nodes. The key is the footprint origin, which is what
+  `EnsureHospitalParamedicAtTile` and the roof-post cache use; the centre is the node location.
+- `ProcessMedevacHospitalHandoffs` collects the events that need a hospital: every active medevac
+  record, every event with a medevac seat on any helicopter, and every event with a handoff under
+  way. The second covers a casualty that completed the record while its body is still aboard.
+- While that set is non-empty it posts a medic on **every** hospital roof. It starts a handoff
+  (`BeginMedevacHandoff` with that hospital's centre) when a transfer-capable helicopter carrying
+  that event's patients is within `MedevacHospitalHandoffRadiusCm` of **any** hospital centre.
+- A handoff ends when its event no longer needs service or when `AdvanceMedevacHandoff` says so.
+- The world tag (remake-only) reads HOSPITAL while a patient of the event is aboard the player's
+  helicopter. It points live at the hospital nearest the helicopter, and there is no tag when the
+  city has no hospital. Otherwise it reads PATIENT at `+0x28`. The cockpit map needs no special
+  case any more: with `+0x30` at -1 it draws the patient line until pickup, as the original does.
+- Saves: the mission runtime blob keeps its version-1 layout. The old per-event hospital block
+  (count + `{event id, tile}` pairs) is written empty and read-and-discarded. A loaded medevac
+  record's `+0x30` is cleared.
+
+Tests: `SimCopter.Missions.MedevacRecordLayout` and `SimCopter.Missions.HospitalSites`. The
+landed-helicopter handoff itself still has no headless test.
+
 ## Port boundary
 
 Keep `BoardCarrier`, `AlightFromCarrier`, and `MissionPassengerSlots` as the

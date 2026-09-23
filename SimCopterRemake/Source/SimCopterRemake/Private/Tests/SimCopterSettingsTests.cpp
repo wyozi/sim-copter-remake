@@ -500,6 +500,17 @@ bool FSimCopterLowPowerModeTest::RunTest(const FString& Parameters)
 	// these in DefaultEngine.ini, and restoring to the wrong number would quietly change normal mode.
 	const bool bWasEnabled = SimCopterLowPower::IsEnabled();
 
+	// The Mac device profile sets SimCopter.LowPower.KeepVolumetricClouds, which exempts
+	// r.VolumetricCloud from the table, so the table round trip runs with it off and the exemption
+	// gets its own check below.
+	IConsoleVariable* KeepClouds = IConsoleManager::Get().FindConsoleVariable(TEXT("SimCopter.LowPower.KeepVolumetricClouds"));
+	TestNotNull(TEXT("SimCopter.LowPower.KeepVolumetricClouds exists"), KeepClouds);
+	const FString KeepCloudsBefore = KeepClouds != nullptr ? KeepClouds->GetString() : FString();
+	if (KeepClouds != nullptr)
+	{
+		KeepClouds->Set(TEXT("0"), ECVF_SetByCode);
+	}
+
 	TMap<FString, FString> Before;
 	for (const SimCopterLowPower::FRenderSwitch& Switch : Switches)
 	{
@@ -533,6 +544,19 @@ bool FSimCopterLowPowerModeTest::RunTest(const FString& Parameters)
 				Variable->GetString(),
 				Pair.Value);
 		}
+	}
+
+	// With the exemption on, the mode must leave the cloud layer exactly as it found it.
+	IConsoleVariable* Clouds = IConsoleManager::Get().FindConsoleVariable(TEXT("r.VolumetricCloud"));
+	if (KeepClouds != nullptr && Clouds != nullptr)
+	{
+		KeepClouds->Set(TEXT("1"), ECVF_SetByCode);
+		const FString CloudsBefore = Clouds->GetString();
+		SimCopterLowPower::Apply(/*bLowPower=*/true);
+		TestEqual(TEXT("KeepVolumetricClouds leaves r.VolumetricCloud alone"), Clouds->GetString(), CloudsBefore);
+		SimCopterLowPower::Apply(/*bLowPower=*/false);
+		TestEqual(TEXT("...and leaving the mode still does"), Clouds->GetString(), CloudsBefore);
+		KeepClouds->Set(*KeepCloudsBefore, ECVF_SetByCode);
 	}
 
 	SimCopterLowPower::Apply(bWasEnabled);

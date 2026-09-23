@@ -18,7 +18,11 @@ answers all three in the mission layer, not in the map.
 - The shared tail of `FUN_004a7a10` adopts the new record as the selection when none exists, so it
   is slot 0 and selected. The same tail also:
   - counts it in `DAT_0057f9c8` (active jobs). The scheduler cap Max Easy + tier therefore always
-    has one slot taken.
+    has one slot taken. **The remake's scheduler leaves it out (deliberate divergence, 2026-09-23,
+    `UpdateSchedulerCadence`)**: at tier 1 (career cities 0-8 and 10, cap 3) the faithful count
+    meant one job at a time and a full 380 s Easy Interval wait for a second, because the IntervalAdj
+    speed-up is zero with only one slot free. That played as long idle stretches. Logged as
+    divergence 3 in [[simcopter-pacing-divergences]].
   - posts the kind-5 message 0x24a.
   - sets `DAT_00505fb4 = DAT_00505fac`.
 - `FUN_004a73e0` wraps everything in `if ((rec[0x50] & 0x100000) == 0)`. The record only ages; it

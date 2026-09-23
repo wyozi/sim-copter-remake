@@ -1,9 +1,9 @@
-# Pacing divergences: mission clock and arsonist cadence
+# Pacing divergences: mission clock, arsonist cadence, base slot
 
 *Decided 2026-08-11. Both are deliberate playability changes, both were made knowing the retail
 values, and both are recorded here so nobody "fixes" them back by citing the decompile.*
 
-The house rule is that this port reproduces the original. These two are the exceptions, and the
+The house rule is that this port reproduces the original. These are the exceptions, and the
 reason in each case is that faithful reproduction produced a mission the player cannot engage with.
 
 ## 1. Every difficulty tier gets tier 1's mission clock
@@ -57,6 +57,21 @@ Two traps this hit on the way in, both worth remembering:
   or gets overwritten by the VM's own bind first. `RebuildFigureClip(TEXT("Thro"))` is the call.
 
 Because the interval is the fire cadence directly, those two tunables are the only knob.
+
+## 3. The Base Location record does not take a mission slot (2026-09-23)
+
+The original counts its Base Location record (type 0x100000, the map's default selection) in
+`DAT_0057f9c8` like a live job — the shared tail of `FUN_004a7a10` — so the `MaxEasy + tier` cap
+always has one slot taken. The spawn countdown only speeds up while two or more slots are free
+(`((ActiveCount - Max) + 1) * IntervalAdj` is zero at one free slot), so at tier 1 (career cities
+0-8 and 10, cap 3) a faithful port ran one job at a time and waited the full 380 s Easy Interval
+for a second. Played, that was long stretches with nothing to do.
+
+`UpdateSchedulerCadence` subtracts the base record from the count it feeds the cap and the
+countdown. `ActiveCount` itself stays faithful for everything else that reads it. Each tier gets
+the job count it had before the base record was ported: tier 1 runs two jobs fast and a third after
+the full interval, up to four fast and a fifth slow at tier 4. See
+[[simcopter-map-selection-base-location]].
 
 Related: [[simcopter-crime-rooftop-rescue]], [[simcopter-mission-system]],
 [[simcopter-burning-debris-spread]], [[simcopter-people-logic-next]].

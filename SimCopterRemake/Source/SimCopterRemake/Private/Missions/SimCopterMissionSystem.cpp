@@ -324,9 +324,30 @@ void FSimCopterMissionSystem::UpdateSchedulerCadence()
 
 	NagInterval = ScaledMissionTimer >> 3;
 
-	if (ActiveCount < MaxEasyWithDifficulty)
+	// DELIBERATE DIVERGENCE: the Base Location record does not take a job slot here.
+	//
+	// The original counts it in DAT_0057f9c8 like a live job (the FUN_004a7a10 tail), so the cap of
+	// Max Easy + tier always has one slot taken. The countdown only speeds up while two or more
+	// slots are free (the IntervalAdj term is zero at one free slot), so a tier-1 city (career
+	// cities 0-8 and 10) runs one job at a time and waits the full 380 s Easy Interval for a
+	// second one. That plays as long stretches with nothing to do. Leaving the base out of the count here gives
+	// every tier the job count it had before the base record was ported: two jobs fast and a third
+	// after the full interval at tier 1, up to four fast and a fifth slow at tier 4. ActiveCount
+	// itself stays faithful for everything else that reads it. Logged as divergence 3 in
+	// Docs/memory/simcopter-pacing-divergences.md.
+	int32 JobCount = ActiveCount;
+	for (const FSimCopterMissionRecord& Record : Records)
 	{
-		SpawnCountdown = (SpawnCountdown - FrameDeltaEma) + ((ActiveCount - MaxEasyWithDifficulty) + 1) * Tuning.IntervalAdj;
+		if (IsBaseLocationRecord(Record))
+		{
+			--JobCount;
+			break;
+		}
+	}
+
+	if (JobCount < MaxEasyWithDifficulty)
+	{
+		SpawnCountdown = (SpawnCountdown - FrameDeltaEma) + ((JobCount - MaxEasyWithDifficulty) + 1) * Tuning.IntervalAdj;
 	}
 }
 
@@ -1473,7 +1494,8 @@ int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 
 		// The shared tail, without its presentation. The original adopts it as the map's selection
 		// when nothing is selected and counts it in DAT_0057f9c8 like any live job - which is why
-		// the scheduler's concurrency cap (Max Easy + tier) always has one slot taken - and resets
+		// the original's concurrency cap (Max Easy + tier) always has one slot taken; the remake's
+		// scheduler leaves it out, see UpdateSchedulerCadence - and resets
 		// DAT_00505fb4 to DAT_00505fac.
 		//
 		// DIVERGENCES, both deliberate: (1) the tail also posts the kind-5 "started" message with

@@ -2,6 +2,8 @@
 
 #include "Game/SimCopterSettings.h"
 
+#include "RenderingThread.h"
+
 #include "Audio/SimCopterAudioSubsystem.h"
 #include "Audio/SimCopterRadio.h"
 #include "Engine/Engine.h"
@@ -334,6 +336,7 @@ void USimCopterSettings::Save()
 
 	if (UGameUserSettings* UserSettings = GEngine != nullptr ? GEngine->GetGameUserSettings() : nullptr)
 	{
+		FlushRenderingForSettingsChange();
 		UserSettings->ApplySettings(/*bCheckForCommandLineOverrides=*/false);
 	}
 }
@@ -457,6 +460,7 @@ void USimCopterSettings::ApplyLowPowerScalability()
 
 void USimCopterSettings::ApplyGraphics(const UObject* WorldContextObject)
 {
+	FlushRenderingForSettingsChange();
 #if WITH_DLSS
 	if (UDLSSLibrary::IsDLSSSupported())
 	{
@@ -821,6 +825,14 @@ FText USimCopterSettings::GetAntiAliasingMethodLabel(const ESimCopterAntiAliasin
 	case ESimCopterAntiAliasingMethod::TemporalAA: return LOCTEXT("AntiAliasingTaa", "TAA");
 	case ESimCopterAntiAliasingMethod::Smaa:       return LOCTEXT("AntiAliasingSmaa", "SMAA");
 	default:                                       return LOCTEXT("AntiAliasingTsr", "TSR");
+	}
+}
+
+void USimCopterSettings::FlushRenderingForSettingsChange()
+{
+	if (IsInGameThread())
+	{
+		FlushRenderingCommands();
 	}
 }
 

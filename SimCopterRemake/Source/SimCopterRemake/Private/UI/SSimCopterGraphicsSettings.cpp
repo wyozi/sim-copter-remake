@@ -645,6 +645,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings(); UserSettings != nullptr && Index >= 0 && Index < UE_ARRAY_COUNT(Modes))
 			{
 				UserSettings->SetFullscreenMode(Modes[Index]);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyResolutionSettings(/*bCheckForCommandLineOverrides=*/false);
 			}
 		};
@@ -677,6 +679,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings(); UserSettings != nullptr && Modes.IsValidIndex(Index))
 			{
 				UserSettings->SetScreenResolution(Modes[Index]);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyResolutionSettings(/*bCheckForCommandLineOverrides=*/false);
 			}
 		};
@@ -700,6 +704,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings())
 			{
 				UserSettings->SetVSyncEnabled(Index == 1);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyNonResolutionSettings();
 			}
 		};
@@ -744,6 +750,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings(); UserSettings != nullptr && Rates.IsValidIndex(Index))
 			{
 				UserSettings->SetFrameRateLimit(Rates[Index]);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyNonResolutionSettings();
 			}
 		};
@@ -762,6 +770,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings())
 			{
 				UserSettings->SetResolutionScaleNormalized(Alpha);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyNonResolutionSettings();
 			}
 		},
@@ -1263,6 +1273,8 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings())
 			{
 				Setter(UserSettings, Index);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyNonResolutionSettings();
 			}
 		};
@@ -1304,7 +1316,11 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 			if (UGameUserSettings* UserSettings = GetUserSettings();
 				UserSettings != nullptr && Index >= 0 && Index < CustomIndex)
 			{
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->SetOverallScalabilityLevel(Index);
+				USimCopterSettings::FlushRenderingForSettingsChange();
+
 				UserSettings->ApplyNonResolutionSettings();
 			}
 		};
@@ -1488,6 +1504,8 @@ void SSimCopterGraphicsSettings::RestoreEnteredState()
 	UserSettings->SetVisualEffectQuality(Entered.Quality[7]);
 	UserSettings->SetFoliageQuality(Entered.Quality[8]);
 	UserSettings->SetShadingQuality(Entered.Quality[9]);
+	USimCopterSettings::FlushRenderingForSettingsChange();
+
 	UserSettings->ApplyNonResolutionSettings();
 
 	// Only touch the window when the page actually moved it: re-applying a resolution the player
@@ -1499,6 +1517,8 @@ void SSimCopterGraphicsSettings::RestoreEnteredState()
 	{
 		UserSettings->SetScreenResolution(Entered.Resolution);
 		UserSettings->SetFullscreenMode(static_cast<EWindowMode::Type>(Entered.WindowMode));
+		USimCopterSettings::FlushRenderingForSettingsChange();
+
 		UserSettings->ApplyResolutionSettings(/*bCheckForCommandLineOverrides=*/false);
 	}
 }

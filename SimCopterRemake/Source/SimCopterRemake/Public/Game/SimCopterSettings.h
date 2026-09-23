@@ -424,6 +424,19 @@ public:
 	static FText GetAntiAliasingMethodLabel(ESimCopterAntiAliasingMethod Method);
 	static FText GetTimeOfDayModeLabel(ESimCopterTimeOfDayMode Mode);
 
+	/**
+	 * Call before changing any render setting at runtime (scalability, the Low Power switch table,
+	 * UGameUserSettings::Apply*). Waits for the frame the render thread has in flight.
+	 *
+	 * The engine reads some of these on the render thread with GetValueOnAnyThread - GetShadowQuality
+	 * for one - so a change landing mid-frame lets shadow setup allocate shadows at the old quality
+	 * and the projection pass then run at quality 0, where ShadowRendering.cpp has no shader
+	 * (check(0) at lines 693/1801). Development stops there; Shipping draws with no pipeline and
+	 * Metal crashes in FMetalStateCache::GetPrimitiveType. That was "turning Low Power Graphics back
+	 * on crashes the game". Flushing first means the next frame sees one consistent set of values.
+	 */
+	static void FlushRenderingForSettingsChange();
+
 private:
 	UPROPERTY(Config)
 	int32 GameVolume = VolumeMax;

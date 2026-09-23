@@ -65,7 +65,13 @@ enum EType : int32
 	TYPE_Burglar        = 0x4000,   // CARROBBR getaway car and recurring burglar (BHAV 1303)
 	TYPE_Mugger         = 0x20000,  // single person, person state 12, behavior class 9 (BHAV 1302)
 	TYPE_RooftopRescue  = 0x80010,  // people trapped on a mission building roof (person state 2)
-	TYPE_Ufo            = 0x100000, // the UFO event ([General Miss] UFO Money/Points)
+	// NOT a job: the permanent "Base Location" record (string 586, voice/text id 0x24a) that city
+	// entry FUN_0047a240 creates at the airport with FUN_004a7a10(DAT_005d91d0, DAT_005d91d4,
+	// 0x100000). FUN_004a73e0 skips every record carrying this bit, so it never completes or
+	// expires; FUN_004a4000 gives it no map icon. It exists so the cockpit map has somewhere to
+	// point when no job is selected. (The remake used to call this bit "UFO"; the flying UFO is
+	// ambient plane slot 1, and its [General Miss] reward is EVT_UfoResolved, not a record.)
+	TYPE_BaseLocation   = 0x100000,
 };
 
 // SCHOOK: RioterSpawn 0x004c4190, spawn-mode-3 arm.
@@ -143,6 +149,20 @@ enum ECategory : int32
 	CAT_Background = 2,
 	CAT_ExpireSilently = 4,
 	CAT_CompleteNow = 8,
+};
+
+// Why the cockpit map's selected record (DAT_0057f9d8) changed. Every write goes through
+// FSimCopterMissionSystem::SetMapFocusRecordIndex with one of these, so a rule layered on top of the
+// original's (or a listener) has exactly one place to hook.
+enum class EMapFocusReason : uint8
+{
+	Created,        // FUN_004a7a10's tail: a new non-background record while nothing was selected
+	LifecycleAdopt, // FUN_004a73e0's live-record arm: nothing selected, so this record is taken
+	Completed,      // FUN_004a73e0: the selected record completed; first live record in slot order
+	CycledNext,     // FUN_004a9860 (map button / command 0x1e)
+	CycledPrevious, // FUN_004a9900 (map button / command 0x1d)
+	Loaded,         // FUN_004ab3e0: a saved game re-picks the first live record
+	Reset,          // table cleared (FUN_004a6c80) or Initialize
 };
 
 // MSVC rand(): the mission layer's PRNG (NOT the people-behavior LFSR).
@@ -276,6 +296,12 @@ struct SIMCOPTERREMAKE_API FSimCopterMissionRecord
 	FString Name;                 // +0x00 sprintf "<retail title> <event id>"
 	int32 TypeSerial = 0;         // +0x20 per-type sequence number
 	int32 EventId = -1;           // +0x24 unique id (global serial)
+	// The three coordinate pairs, and what a transport (0x40, FUN_004a7a10) keeps in them:
+	//   +0x28 the placer's tile - the passengers' DESTINATION
+	//   +0x30 a copy of +0x28 - the drop-off FUN_004a88e0 hands BHAV 292
+	//   +0x38 the PICKUP, FUN_004abb30 around +0x28; the passengers spawn here, and FUN_004a73e0
+	//         clears it to -1 once picked up + dead + lost == passengers
+	// The cockpit map reads (+0x30, else +0x28) and +0x38 - FUN_004a3820 / FUN_004a4200.
 	int32 TileX = -1;             // +0x28
 	int32 TileY = -1;             // +0x2c
 	int32 SecondaryX = -1;        // +0x30
@@ -572,6 +598,43 @@ public:
 	int32 CreateEventOfType(int32 TypeMask);
 	int32 CreateEventAt(int32 TileX, int32 TileY, int32 TypeMask);
 
+	// SCHOOK: CityEntryBaseRecord 0x0047a240 (its last call, FUN_004a7a10(DAT_005d91d0,
+	// DAT_005d91d4, 0x100000)). Makes sure the Base Location record exists and points at the given
+	// tile - the airport origin + 1, which FUN_004829f0 stores in DAT_005d91d0/d4. The original
+	// creates it exactly once per city, right after FUN_004a6c80 empties the table, so it lands in
+	// slot 0 and becomes the map's selection. The remake calls this at session start and again
+	// every tick (it is a 30-slot scan) so that a city whose airport is placed late, or a save
+	// written before the record existed, still gets one. Pass (-1, -1) while the airport is not yet
+	// known; a later call moves the record there. Returns the record's slot, or INDEX_NONE when the
+	// table is full.
+	int32 EnsureBaseLocationRecord(int32 TileX, int32 TileY);
+	static bool IsBaseLocationRecord(const FSimCopterMissionRecord& Record)
+	{
+		return Record.bActive && (Record.TypeMask & TYPE_BaseLocation) != 0;
+	}
+
+	// --- the cockpit map's selected record, DAT_0057f9d8 --------------------------------------
+	//
+	// The original keeps the map's selection in the mission layer, not in the map: FUN_004a7a10
+	// and FUN_004a73e0 adopt a record when nothing is selected, FUN_004a73e0 re-picks the first live
+	// record in slot order when the selected one COMPLETES, and FUN_004a9860/FUN_004a9900 cycle it.
+	// Nothing else writes it - in particular a record retired silently (category 4) or a jam that
+	// times out leaves the pointer on the dead record, which the map keeps drawing until the player
+	// cycles or a new record reuses the slot. That stale behaviour is reproduced.
+	//
+	// Stored as a slot index, which is what the pointer is (DAT_0057f9dc + slot * 0xd4).
+	int32 GetMapFocusRecordIndex() const { return FocusRecordIndex; }
+	// FUN_004a3ec0/FUN_004a3ed0's test: live and not background (category 2).
+	static bool IsMapFocusable(const FSimCopterMissionRecord& Record)
+	{
+		return Record.bActive && Record.Category != CAT_Background;
+	}
+	void FocusNextMapRecord();      // FUN_004a9860
+	void FocusPreviousMapRecord();  // FUN_004a9900
+	// THE single write point for DAT_0057f9d8. Every original path above lands here with its
+	// reason, so remake-only selection rules (or a UI notification) hook in one place.
+	void SetMapFocusRecordIndex(int32 RecordIndex, EMapFocusReason Reason);
+
 	// Debug: force-spawn a fire mission even when the mission-record pool is full. Grows the pool
 	// on demand (normal play never fills it), so this always succeeds if a suitable tile exists.
 	int32 DebugForceBuildingFire();
@@ -724,7 +787,7 @@ private:
 	int32 NextEventId = 0;            // DAT_0057f9d0
 	int32 TypeSerials[16] = {0};      // DAT_0057f9a0..DAT_0057f9c4 family counters (crimes/rescues share)
 	int32 LifecyclePassCounter = 0;   // riot recenter cadence (every 13th pass)
-	int32 FocusRecordIndex = INDEX_NONE; // DAT_0057f9d8 (current mission pointer)
+	int32 FocusRecordIndex = INDEX_NONE; // DAT_0057f9d8 (the map's selected record; see SetMapFocusRecordIndex)
 
 	// Fire globals.
 	int32 ActiveFlameCount = 0;       // DAT_00505f58
@@ -737,7 +800,10 @@ private:
 	void DispatchScheduledType(int32 Bucket);
 
 	// FUN_004a92f0 helpers.
-	bool TryPickRandomTileNearCamera(int32& OutX, int32& OutY); // FUN_004abb30
+	bool TryPickRandomTileNearCamera(int32& OutX, int32& OutY); // FUN_004abb30 around the camera
+	// FUN_004abb30 itself: a tile up to ((DAT_00506074 + 0x12) * tier + 8) away on each axis from
+	// the origin, or anywhere on the map when that falls off it. Seven or five rand() calls.
+	void PickRandomTileNear(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY);
 	void NoteCreationResult(bool bCreated);
 
 	// FUN_004a7a10 helpers.
@@ -756,6 +822,9 @@ private:
 	void UpdateLifecycle();
 	void CompleteMission(FSimCopterMissionRecord& Record); // FUN_004aabf0
 	void DeactivateRecord(int32 RecordIndex);
+	// FUN_004a73e0's re-pick after the SELECTED record completes: clear DAT_0057f9d8, then take the
+	// first live, non-background record in slot order (or leave it null).
+	void RefocusAfterCompletion(int32 CompletedRecordIndex);
 	void PostNag(FSimCopterMissionRecord& Record, int32 NagCode);
 	void PostTypedUiMessage(int32 Kind, const FSimCopterMissionRecord* Record, int32 EventId, int32 TextId, int32 ValueA, int32 ValueB, bool bNegative);
 

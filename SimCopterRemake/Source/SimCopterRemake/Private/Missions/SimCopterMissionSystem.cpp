@@ -564,12 +564,8 @@ int32 FSimCopterMissionSystem::CreateEventOfType(int32 TypeMask)
 			}
 		}
 	}
-	else if (TypeMask == TYPE_Ufo)
-	{
-		// FUN_004a92f0 has no case for 0x100000 and places nothing; the original's UFO arrives
-		// from somewhere else. Kept so the debug mission list can still summon one.
-		return ReturnCreation(CreateEventAt(-1, -1, TypeMask));
-	}
+	// FUN_004a92f0 has no case for 0x100000: the Base Location record is never placed, only created
+	// by city entry (EnsureBaseLocationRecord), so it falls through to a failed creation here.
 
 	NoteCreationResult(false);
 	return -1;
@@ -708,8 +704,17 @@ bool FSimCopterMissionSystem::TryPickRandomTileNearCamera(int32& OutTX, int32& O
 		World->GetCameraTile(CamX, CamY);
 	}
 
+	PickRandomTileNear(CamX, CamY, OutTX, OutTY);
+	return true;
+}
+
+void FSimCopterMissionSystem::PickRandomTileNear(const int32 OriginX, const int32 OriginY, int32& OutTX, int32& OutTY)
+{
+	// SCHOOK: RandomTileNear 0x004abb30. iVar4 = (DAT_00506074 + 0x12) * DAT_004f9740 + 8; each axis
+	// takes the larger of two `(short)rand() % iVar4` draws, a third rand() picks its sign, and a
+	// result off the 128x128 map is thrown away for two fresh `rand() & 0x7f` coordinates.
 	int32 Range = (ConsecutivePlaceFailures + 18) * DifficultyTier + 8;
-	
+
 	auto GetOffset = [&]() -> int32 {
 		int32 Val1 = Rand.Rand() % Range;
 		int32 Val2 = Rand.Rand() % Range;
@@ -724,8 +729,8 @@ bool FSimCopterMissionSystem::TryPickRandomTileNearCamera(int32& OutTX, int32& O
 		return MaxVal;
 	};
 
-	OutTX = CamX + GetOffset();
-	OutTY = CamY + GetOffset();
+	OutTX = OriginX + GetOffset();
+	OutTY = OriginY + GetOffset();
 
 	if (OutTX < 0 || OutTX > 127 || OutTY < 0 || OutTY > 127)
 	{
@@ -737,8 +742,6 @@ bool FSimCopterMissionSystem::TryPickRandomTileNearCamera(int32& OutTX, int32& O
 		int16 S2 = static_cast<int16>(R2 >> 15);
 		OutTY = static_cast<int32>(static_cast<int16>(((((static_cast<uint16>(R2) ^ S2) - S2) & 0x7f) ^ S2) - S2));
 	}
-	
-	return true;
 }
 
 bool FSimCopterMissionSystem::IsFireSuitableTile(int32 XbldId)
@@ -797,6 +800,15 @@ void FSimCopterMissionSystem::ReleaseFailedRecord(int32 RecordIndex)
 
 void FSimCopterMissionSystem::AnnounceCreated(const FSimCopterMissionRecord& Record)
 {
+	// FUN_004a7a10's tail opens with the map's adoption test, before any counter moves:
+	//     if (DAT_0057f9d8 == 0 && rec[0x54] != 2) DAT_0057f9d8 = rec;
+	// so the first non-background record created while nothing is selected becomes the selection.
+	const int32 RecordIndex = static_cast<int32>(&Record - Records.GetData());
+	if (FocusRecordIndex == INDEX_NONE && Record.Category != CAT_Background && Records.IsValidIndex(RecordIndex))
+	{
+		SetMapFocusRecordIndex(RecordIndex, EMapFocusReason::Created);
+	}
+
 	if (Record.Category == CAT_Background)
 	{
 		BackgroundCount++;
@@ -821,7 +833,12 @@ void FSimCopterMissionSystem::PostAnnouncementVoice(const FSimCopterMissionRecor
 
 	int32 TypeVoiceId = -1;
 	int32 ClosingVoiceId = -1;
-	const int32 LocationVoiceId = GetLocationVoiceId(Record.TileX, Record.TileY);
+	// FUN_004a7a10 hands FUN_004ab480 the record's +0x28 pair, except the 0x40 branch, which
+	// passes +0x38: a transport is announced where the party is waiting, not where it is going.
+	const bool bAnnounceAtPickup = Record.TypeMask == TYPE_Transport && Record.TertiaryX >= 0;
+	const int32 LocationVoiceId = bAnnounceAtPickup
+		? GetLocationVoiceId(Record.TertiaryX, Record.TertiaryY)
+		: GetLocationVoiceId(Record.TileX, Record.TileY);
 
 	// DAT_005060c8 table of 6 closing detail slots: D2001, D2003, D2004, D2007, D2011, D2019
 	static const int32 ClosingPool[6] = { 0x4b, 0x4d, 0x4e, 0x51, 0x55, 0x5d };
@@ -865,11 +882,6 @@ void FSimCopterMissionSystem::PostAnnouncementVoice(const FSimCopterMissionRecor
 		if (Roll == 1) ClosingVoiceId = GetRandomClosingFromPool();
 		else if (Roll == 2) ClosingVoiceId = 0x5e; // D2020
 		else ClosingVoiceId = 0x57; // D2013
-	}
-	else if ((TypeMask & TYPE_Ufo) != 0)
-	{
-		TypeVoiceId = 0x83; // D1020 ("10-11 in progress" / UFO sighting)
-		ClosingVoiceId = GetRandomClosingFromPool();
 	}
 	else if ((TypeMask & TYPE_BuildingFire) != 0)
 	{
@@ -993,7 +1005,7 @@ int32 FSimCopterMissionSystem::GetTypeTextId(int32 TypeMask)
 	if ((TypeMask & TYPE_Arsonist) != 0) return 0x245;
 	if ((TypeMask & TYPE_Mugger) != 0) return 0x246;
 	if ((TypeMask & TYPE_Robber) != 0) return 0x247;
-	if ((TypeMask & TYPE_Ufo) != 0) return 0x24a;
+	if ((TypeMask & TYPE_BaseLocation) != 0) return 0x24a; // 586 "Base Location"
 	return 0x24b;
 }
 
@@ -1052,7 +1064,7 @@ const TCHAR* FSimCopterMissionSystem::GetTypeDisplayName(int32 TypeMask)
 	if ((TypeMask & TYPE_Robber) != 0) return TEXT("Robber");
 	if ((TypeMask & TYPE_PlaneCrash) != 0) return TEXT("Plane Crash");
 	if ((TypeMask & TYPE_BuildingFire) != 0) return TEXT("Building Fire");
-	if ((TypeMask & TYPE_Ufo) != 0) return TEXT("UFO");
+	if ((TypeMask & TYPE_BaseLocation) != 0) return TEXT("Base Location");
 	return TEXT("Mission");
 }
 
@@ -1099,10 +1111,11 @@ bool FSimCopterMissionSystem::FindNearestHospitalTile(int32 OriginX, int32 Origi
 
 bool FSimCopterMissionSystem::FindDefaultDestinationTile(int32 OriginX, int32 OriginY, int32& OutX, int32& OutY) const
 {
-	// PLACEHOLDER, not a port: the original's transport destination (what feeds EVT_SetSecondaryCoords,
-	// record +0x30/+0x34) has not been traced in SimCopter.exe yet. Until it is, pick the nearest
-	// building at least MinDistance tiles away, preferring occupied ones (XBLD flag 0x04) and falling
-	// back to any real building (0x02). Buildings never stand in water, which is the point: the old
+	// PLACEHOLDER, not a port, and now only the medevac fallback for a city with no hospital. (It was
+	// the transport destination until FUN_004a7a10's 0x40 branch was read: the destination is the
+	// placer's own tile, copied into +0x30, and the pickup is FUN_004abb30 around it in +0x38.)
+	// Picks the nearest building at least MinDistance tiles away, preferring occupied ones (XBLD
+	// flag 0x04) and falling back to any real building (0x02). Buildings never stand in water: the old
 	// version sampled only 80 tiles along eight compass rays, and once GetXbldPropertyFlags became the
 	// real table (39 occupied ids) it almost always missed and fell through to the unchecked mirror
 	// tile below - which on Sea Cliff, 76% water, is usually open sea.
@@ -1207,22 +1220,47 @@ int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 	}
 	else if (TypeMask == TYPE_Transport)
 	{
-		if (World && !World->TryResolveTransportSpawnTile(TX, TY, Rec.TileX, Rec.TileY))
+		// SCHOOK: CreateMission 0x004a7a10, the 0x40 branch. The placer's tile (+0x28, a mission
+		// building from FUN_004a92f0) is where the party wants to GO. Where they wait is drawn
+		// around it: up to ten FUN_004abb30 picks, the first one on a building (0x6f < id < 0xdc)
+		// wins, and ten misses fail the creation.
+		//     do { FUN_004abb30(x, y, &px, &py); if (0x6f < xbld[px][py] < 0xdc) break; } while (++n < 10);
+		//     rec+0x38/+0x3c = px, py;   ... FUN_004c3eb0(-1, 4, rec+0x38, rec+0x3c, id) ...
+		//     rec+0x30 = rec+0x28; rec+0x34 = rec+0x2c;
+		int32 PickupX = INDEX_NONE;
+		int32 PickupY = INDEX_NONE;
+		int32 Try = 0;
+		for (; Try < 10; ++Try)
+		{
+			PickRandomTileNear(TX, TY, PickupX, PickupY);
+			const uint8 PickupXbld = static_cast<uint8>(World ? World->GetXbldTileId(PickupX, PickupY) : 0);
+			if (PickupXbld > 0x6f && PickupXbld < 0xdc)
+			{
+				break;
+			}
+		}
+		if (Try == 10)
 		{
 			ReleaseFailedRecord(RecIndex);
 			return -1;
 		}
-		TX = Rec.TileX;
-		TY = Rec.TileY;
+		// REMAKE ADAPTATION: a building tile is never water, but the remake's people need a dry
+		// standing spot, so the pickup still goes through the land-tile resolver.
+		if (World && !World->TryResolveTransportSpawnTile(PickupX, PickupY, PickupX, PickupY))
+		{
+			ReleaseFailedRecord(RecIndex);
+			return -1;
+		}
+		Rec.TertiaryX = PickupX;
+		Rec.TertiaryY = PickupY;
 
-		// FUN_004a7a10's 0x40 branch: `rand() % (DAT_004f9740 + 1) + 1` passengers, where
-		// DAT_004f9740 is the difficulty tier (FUN_004a92f0 switches on it 1/2/3). One party of
-		// ten every single time was a placeholder.
+		// `(short)rand() % (DAT_004f9740 + 1) + 1` passengers, where DAT_004f9740 is the difficulty
+		// tier, every one spawned at the pickup (+0x38), not at the destination.
 		bool bSpawned = false;
 		const int32 PartySize = (Rand.Rand() % (DifficultyTier + 1)) + 1;
 		for (int32 i = 0; i < PartySize; ++i)
 		{
-			if (World && World->TrySpawnMissionPerson(4, -1, TX, TY, Rec.EventId))
+			if (World && World->TrySpawnMissionPerson(4, -1, Rec.TertiaryX, Rec.TertiaryY, Rec.EventId))
 			{
 				bSpawned = true;
 				Rec.TransportPassengers++;
@@ -1233,9 +1271,10 @@ int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 			ReleaseFailedRecord(RecIndex);
 			return -1;
 		}
+		Rec.SecondaryX = Rec.TileX;
+		Rec.SecondaryY = Rec.TileY;
 		Rec.Name = FString::Printf(TEXT("Transport #%d"), TypeSerials[3]);
 		TypeSerials[3]++;
-		FindDefaultDestinationTile(TX, TY, Rec.SecondaryX, Rec.SecondaryY);
 	}
 	else if (TypeMask == TYPE_Medevac)
 	{
@@ -1517,9 +1556,34 @@ int32 FSimCopterMissionSystem::CreateEventAt(int32 TX, int32 TY, int32 TypeMask)
 		// The original explicitly leaves Secondary/Tertiary at -1. Healthy survivors can be put
 		// down on any safe dry surface; a fabricated destination changed both the phase and marker.
 	}
-	else if (TypeMask == TYPE_Ufo)
+	else if (TypeMask == TYPE_BaseLocation)
 	{
-		Rec.Name = TEXT("UFO");
+		// SCHOOK: CreateMission 0x004a7a10, the 0x100000 branch. `sprintf(rec, "%s", DAT_005816b8)`
+		// - the type name alone, string 586, with no serial - then +0x20 = 0 and +0x24 = -1, so no
+		// event can ever address it (FUN_004a8890 refuses id -1). The id counter was already
+		// advanced by the shared preamble and is not given back, exactly as in the original.
+		// Secondary/Tertiary stay -1 and the category stays 0.
+		Rec.Name = TEXT("Base Location");
+		Rec.TypeSerial = 0;
+		Rec.EventId = -1;
+
+		// The shared tail, without its presentation. The original adopts it as the map's selection
+		// when nothing is selected and counts it in DAT_0057f9c8 like any live job - which is why
+		// the scheduler's concurrency cap (Max Easy + tier) always has one slot taken - and resets
+		// DAT_00505fb4 to DAT_00505fac.
+		//
+		// DIVERGENCES, both deliberate: (1) the tail also posts the kind-5 "started" message with
+		// text 0x24a, which the remake does not, so "Base Location" never appears in the HUD ticker
+		// or the career log as a job that started. (2) The countdown reset is not ported: on first
+		// launch DAT_00505fac is still its zero .data value (so the original's first job came on the
+		// first scheduler pass), and the remake already hands out the opening job from the session
+		// start (RollScheduledMissionNow); overwriting SpawnCountdown here would delay it instead.
+		if (FocusRecordIndex == INDEX_NONE)
+		{
+			SetMapFocusRecordIndex(RecIndex, EMapFocusReason::Created);
+		}
+		ActiveCount++;
+		return Rec.EventId;
 	}
 	else
 	{
@@ -1594,6 +1658,120 @@ void FSimCopterMissionSystem::AdjustVictimsPickedUp(int32 EventId, int32 Delta)
 }
 
 
+int32 FSimCopterMissionSystem::EnsureBaseLocationRecord(const int32 TileX, const int32 TileY)
+{
+	for (int32 Index = 0; Index < Records.Num(); ++Index)
+	{
+		FSimCopterMissionRecord& Record = Records[Index];
+		if (!IsBaseLocationRecord(Record))
+		{
+			continue;
+		}
+		// FUN_004829f0 fixes DAT_005d91d0/d4 once per city; the remake only moves the record when
+		// the airport was not known the first time round.
+		if (TileX >= 0 && TileY >= 0)
+		{
+			Record.TileX = TileX;
+			Record.TileY = TileY;
+		}
+		return Index;
+	}
+
+	CreateEventAt(TileX, TileY, TYPE_BaseLocation);
+	for (int32 Index = 0; Index < Records.Num(); ++Index)
+	{
+		if (IsBaseLocationRecord(Records[Index]))
+		{
+			return Index;
+		}
+	}
+	return INDEX_NONE;
+}
+
+void FSimCopterMissionSystem::SetMapFocusRecordIndex(const int32 RecordIndex, const EMapFocusReason Reason)
+{
+	// The one place DAT_0057f9d8 is written. Reason is unused by the original's rules; it is here so
+	// a remake-only policy (or a UI notification) can tell a player's cycle from the mission layer's
+	// own adoption/re-pick without every call site growing its own hook.
+	(void)Reason;
+	FocusRecordIndex = Records.IsValidIndex(RecordIndex) ? RecordIndex : INDEX_NONE;
+}
+
+void FSimCopterMissionSystem::FocusNextMapRecord()
+{
+	// SCHOOK: MapNextMission 0x004a9860. With nothing selected nothing happens. Otherwise the first
+	// focusable slot after the current one, then (wrapping) the first before it; when neither
+	// exists the selection stays put - even on a record that is no longer live.
+	if (!Records.IsValidIndex(FocusRecordIndex))
+	{
+		return;
+	}
+	for (int32 Index = FocusRecordIndex + 1; Index < Records.Num(); ++Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			SetMapFocusRecordIndex(Index, EMapFocusReason::CycledNext);
+			return;
+		}
+	}
+	for (int32 Index = 0; Index < FocusRecordIndex; ++Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			SetMapFocusRecordIndex(Index, EMapFocusReason::CycledNext);
+			return;
+		}
+	}
+}
+
+void FSimCopterMissionSystem::FocusPreviousMapRecord()
+{
+	// SCHOOK: MapPreviousMission 0x004a9900. The mirror image: the nearest focusable slot below the
+	// current one, then (wrapping) the highest one above it.
+	if (!Records.IsValidIndex(FocusRecordIndex))
+	{
+		return;
+	}
+	for (int32 Index = FocusRecordIndex - 1; Index >= 0; --Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			SetMapFocusRecordIndex(Index, EMapFocusReason::CycledPrevious);
+			return;
+		}
+	}
+	for (int32 Index = Records.Num() - 1; Index > FocusRecordIndex; --Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			SetMapFocusRecordIndex(Index, EMapFocusReason::CycledPrevious);
+			return;
+		}
+	}
+}
+
+void FSimCopterMissionSystem::RefocusAfterCompletion(const int32 CompletedRecordIndex)
+{
+	// FUN_004a73e0, after FUN_004aabf0 and the active-bit clear, on every completion arm:
+	//     if (DAT_0057f9d8 == rec) { DAT_0057f9d8 = 0; first slot with bit 0 set and +0x54 != 2; }
+	// Only the SELECTED record's completion moves it. The category-4 and jam-expiry arms never get
+	// here, so a record that dies that way stays selected (see GetMapFocusRecordIndex).
+	if (FocusRecordIndex != CompletedRecordIndex)
+	{
+		return;
+	}
+	int32 FirstLive = INDEX_NONE;
+	for (int32 Index = 0; Index < Records.Num(); ++Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			FirstLive = Index;
+			break;
+		}
+	}
+	SetMapFocusRecordIndex(FirstLive, EMapFocusReason::Completed);
+}
+
 void FSimCopterMissionSystem::UpdateLifecycle()
 {
 	for (int32 i = 0; i < Records.Num(); ++i)
@@ -1629,11 +1807,26 @@ void FSimCopterMissionSystem::UpdateLifecycle()
 			Rec.TimeAccum += FrameDeltaEma;
 		}
 
+		// `if ((rec[0x50] & 0x100000) == 0) { ... }` - everything below, goals, expiry, completion
+		// and the map adoption, is skipped for the Base Location record. It only ever ages.
+		if ((Rec.TypeMask & TYPE_BaseLocation) != 0)
+		{
+			continue;
+		}
+
 		if (Rec.Category == CAT_CompleteNow)
 		{
 			CompleteMission(Rec);
 			DeactivateRecord(i);
+			RefocusAfterCompletion(i);
 			continue;
+		}
+
+		// The live-record arm (category not 2/4/8) opens by adopting the record as the map's
+		// selection when there is none: `if (DAT_0057f9d8 == 0) DAT_0057f9d8 = rec;`.
+		if (Rec.Category != CAT_Background && Rec.Category != CAT_ExpireSilently && FocusRecordIndex == INDEX_NONE)
+		{
+			SetMapFocusRecordIndex(i, EMapFocusReason::LifecycleAdopt);
 		}
 
 		// Traffic jam expiry (90 seconds = 0x5a0000)
@@ -1643,23 +1836,28 @@ void FSimCopterMissionSystem::UpdateLifecycle()
 			{
 				CompleteMission(Rec);
 				DeactivateRecord(i);
+				RefocusAfterCompletion(i);
 				continue;
 			}
 
+			// Expiry is not a completion: FUN_004a73e0's timeout arm clears the active bit and
+			// leaves DAT_0057f9d8 alone, so a selected jam that times out stays selected.
 			if (Rec.TimeAccum > 0x5a0000)
 			{
 				if (World)
 				{
 					World->EndTrafficJam(Rec.EventId);
 				}
-				DeactivateRecord(i); 
+				DeactivateRecord(i);
 				continue;
 			}
 		}
 
 		// FUN_004a73e0's `category == 4` arm: retire the record on the spot, no scoring, no
 		// completion message. That is how a plane crash whose fire became its own mission gets
-		// out of the way (FUN_004b2cd0 posts EVT_SetCategory 4 on the plane's own record).
+		// out of the way (FUN_004b2cd0 posts EVT_SetCategory 4 on the plane's own record), and how
+		// FUN_004b8b60 fails a criminal-car arrest. No DAT_0057f9d8 write on this arm either: the
+		// map keeps a failed record selected.
 		if (Rec.Category == CAT_ExpireSilently)
 		{
 			if ((Rec.TypeMask & TYPE_TrafficJam) != 0 && World)
@@ -1838,6 +2036,7 @@ void FSimCopterMissionSystem::UpdateLifecycle()
 		{
 			CompleteMission(Rec);
 			DeactivateRecord(i);
+			RefocusAfterCompletion(i);
 		}
 	}
 }
@@ -3070,6 +3269,8 @@ bool FSimCopterMissionSystem::ClearTrafficJam(int32 EventId)
 	}
 	CompleteMission(Rec);              // award Jam End money/points + announce + radio voice
 	DeactivateRecord(Idx);
+	// A completion like FUN_004a73e0's jam-cleared arm, so the map re-picks the same way.
+	RefocusAfterCompletion(Idx);
 	return true;
 }
 
@@ -3197,6 +3398,37 @@ bool FSimCopterMissionSystem::SerializeRuntimeState(FArchive& Archive)
 		ActiveCount = FMath::Clamp(ActiveCount, 0, MaxRecords);
 		BackgroundCount = FMath::Clamp(BackgroundCount, 0, MaxRecords);
 		ActiveFlameCount = FMath::Clamp(ActiveFlameCount, 0, MaxFlames);
+
+		for (FSimCopterMissionRecord& Record : Records)
+		{
+			// Saves written before the transport layout was ported kept the pickup in +0x28 and the
+			// destination in +0x30, with +0x38 unused. The ported record always has +0x30 == +0x28,
+			// so a live transport whose two differ is the old shape: move the destination into
+			// +0x28 and the pickup into +0x38 (or clear it if nobody is left waiting there).
+			if (Record.bActive && (Record.TypeMask & TYPE_Transport) != 0 && Record.TertiaryX < 0 &&
+				Record.SecondaryX >= 0 && (Record.TileX != Record.SecondaryX || Record.TileY != Record.SecondaryY))
+			{
+				const bool bNobodyWaiting =
+					Record.VictimsPickedUp + Record.Casualties + Record.PassengersLost >= Record.TransportPassengers;
+				Record.TertiaryX = bNobodyWaiting ? -1 : Record.TileX;
+				Record.TertiaryY = bNobodyWaiting ? -1 : Record.TileY;
+				Record.TileX = Record.SecondaryX;
+				Record.TileY = Record.SecondaryY;
+			}
+		}
+
+		// SCHOOK: LoadMissionTable 0x004ab3e0. The saved pointer is not trusted: after reading the
+		// table the original clears DAT_0057f9d8 and takes the first live, non-background slot.
+		int32 FirstLive = INDEX_NONE;
+		for (int32 Index = 0; Index < Records.Num(); ++Index)
+		{
+			if (IsMapFocusable(Records[Index]))
+			{
+				FirstLive = Index;
+				break;
+			}
+		}
+		SetMapFocusRecordIndex(FirstLive, EMapFocusReason::Loaded);
 	}
 	return !Archive.IsError();
 }

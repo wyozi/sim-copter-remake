@@ -81,7 +81,8 @@ The remake's grid only holds 0x00-0x7e, which makes `< 0x0a` the same test.
 ## Overlays
 
 - **Two direction lines** to the *selected* mission (`FUN_004a3820`): one to `+0x30` (secondary)
-  falling back to `+0x28`, one to `+0x38` (tertiary, the delivery end). Both fade with an
+  falling back to `+0x28`, one to `+0x38` (tertiary - for a transport that is the PICKUP, not the
+  delivery end; see [map selection](simcopter-map-selection-base-location.md)). Both fade with an
   octagonal distance `2*max + min` in tiles: `0x3f - (len<<4)/0x184` on the grey ramp and
   `0x6a - (len<<3)/0x184` on the red. Drawn whatever the blip toggle says.
 - **Other missions** (`FUN_004a4200`) get no line - colour 0 - only an icon at the point the ray

@@ -72,12 +72,6 @@ private:
 	TArray<FColor> Palette;
 	bool bArtLoaded = false;
 
-	// Which mission the buttons cycle and the label names. The original keeps this as a pointer
-	// in DAT_0057f9d8, which the mission layer also writes when a job is announced; here it is an
-	// index into the mission system's record array, re-resolved by event id each pass so a record
-	// shifting slots does not move the selection.
-	int32 CurrentMissionEventId = INDEX_NONE;
-
 	// Which button is held, and the click that started it. FUN_00454ad0 stores the index at +0x80
 	// and FUN_00454c40 only fires when the release lands back inside the same rect.
 	int32 PressedButton = INDEX_NONE;

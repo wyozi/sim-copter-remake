@@ -127,7 +127,7 @@ const FMissionTypeName MissionTypeNames[] = {
 	{ TYPE_Robber,        TEXT("Robber") },          // 583
 	{ TYPE_CarFire,       TEXT("Burning Car") },     // 584
 	{ TYPE_TrafficJam,    TEXT("Traffic Jam") },     // 585
-	{ TYPE_Ufo,           TEXT("Non-Mission Event") }, // 587
+	{ TYPE_BaseLocation,  TEXT("Base Location") },   // 586 (0x24a; 587 "Non-Mission Event" is 0x24b, no bit)
 };
 
 USimCopterCareerSubsystem* GetCareer(const SimCopterHangarShop::FContext& Context)

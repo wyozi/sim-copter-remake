@@ -396,9 +396,14 @@ bool FSimCopterMissionSystemMarkerCoordinateTest::RunTest(const FString& Paramet
 	TestNotNull(TEXT("Transport record should exist"), TransportRecord);
 	if (TransportRecord != nullptr)
 	{
-		TestTrue(TEXT("Transport destination X should be set"), TransportRecord->SecondaryX >= 0 && TransportRecord->SecondaryX < 128);
-		TestTrue(TEXT("Transport destination Y should be set"), TransportRecord->SecondaryY >= 0 && TransportRecord->SecondaryY < 128);
-		TestFalse(TEXT("Transport destination should differ from pickup"), TransportRecord->SecondaryX == TransportRecord->TileX && TransportRecord->SecondaryY == TransportRecord->TileY);
+		// FUN_004a7a10's 0x40 layout: the placer's tile is the destination (+0x28), copied into
+		// +0x30, and the pickup the party waits at is FUN_004abb30 around it in +0x38.
+		TestEqual(TEXT("Transport destination is the placer's tile X"), TransportRecord->TileX, 10);
+		TestEqual(TEXT("Transport destination is the placer's tile Y"), TransportRecord->TileY, 20);
+		TestEqual(TEXT("Transport +0x30 copies +0x28 (X)"), TransportRecord->SecondaryX, TransportRecord->TileX);
+		TestEqual(TEXT("Transport +0x30 copies +0x28 (Y)"), TransportRecord->SecondaryY, TransportRecord->TileY);
+		TestTrue(TEXT("Transport pickup X should be set"), TransportRecord->TertiaryX >= 0 && TransportRecord->TertiaryX < 128);
+		TestTrue(TEXT("Transport pickup Y should be set"), TransportRecord->TertiaryY >= 0 && TransportRecord->TertiaryY < 128);
 	}
 
 	const int32 CarFireEventId = System.CreateEventAt(4, 5, TYPE_CarFireEvent);
@@ -773,7 +778,7 @@ bool FSimCopterMissionTypeNameTest::RunTest(const FString& Parameters)
 	TestEqual(TEXT("0x20 is a medevac"), FString(FSimCopterMissionSystem::GetTypeDisplayName(TYPE_Medevac)), FString(TEXT("MedEvac")));
 	TestEqual(TEXT("0x40 is a transport"), FString(FSimCopterMissionSystem::GetTypeDisplayName(TYPE_Transport)), FString(TEXT("Transport")));
 	TestEqual(TEXT("0x1000 is a riot"), FString(FSimCopterMissionSystem::GetTypeDisplayName(TYPE_Riot)), FString(TEXT("Riot")));
-	TestEqual(TEXT("0x100000 is the UFO"), FString(FSimCopterMissionSystem::GetTypeDisplayName(TYPE_Ufo)), FString(TEXT("UFO")));
+	TestEqual(TEXT("0x100000 is the Base Location record"), FString(FSimCopterMissionSystem::GetTypeDisplayName(TYPE_BaseLocation)), FString(TEXT("Base Location")));
 
 	// A fire that has picked up the debris bit is still a fire (the promotion FUN_004a89c0 case 7
 	// does to a running 0x1 mission).
@@ -1430,8 +1435,17 @@ bool FSimCopterTransportBuildingSpawnTest::RunTest(const FString& Parameters)
 	if (Record != nullptr)
 	{
 		TestTrue(
-			TEXT("Transport passenger pickup tile is on a valid mission building tile"),
+			TEXT("Transport destination tile is on a valid mission building tile"),
 			FSimCopterMissionSystem::IsMissionBuildingTile(City.GetXbldTileId(Record->TileX, Record->TileY)));
+		// FUN_004a7a10 keeps drawing FUN_004abb30 until the pickup lands on a building
+		// (0x6f < id < 0xdc), and spawns every passenger there, not at the destination.
+		const uint8 PickupXbld = static_cast<uint8>(City.GetXbldTileId(Record->TertiaryX, Record->TertiaryY));
+		TestTrue(TEXT("Transport pickup tile is on a building"), PickupXbld > 0x6f && PickupXbld < 0xdc);
+		TestTrue(TEXT("Passengers were spawned"), City.SpawnedTiles.Num() > 0);
+		for (const FIntPoint& Spawned : City.SpawnedTiles)
+		{
+			TestEqual(TEXT("Every passenger spawns at the pickup (+0x38)"), Spawned, FIntPoint(Record->TertiaryX, Record->TertiaryY));
+		}
 	}
 
 	return true;
@@ -1526,12 +1540,11 @@ bool FSimCopterPostAnnouncementVoiceTest::RunTest(const FString& Parameters)
 		TestEqual(TEXT("Plane Crash plays D1017 (0x40 - emergency rescue)"), World.RadioVoiceCalls[1], 0x40);
 	}
 
+	// FUN_004a92f0 has no 0x100000 case and FUN_004ab480 no Base Location phrase: the record is
+	// never placed and never announced.
 	World.RadioVoiceCalls.Reset();
-	const int32 UfoId = System.CreateEventOfType(TYPE_Ufo);
-	if (UfoId != INDEX_NONE && World.RadioVoiceCalls.Num() >= 2)
-	{
-		TestEqual(TEXT("UFO plays D1020 (0x83 - 10-11 in progress)"), World.RadioVoiceCalls[1], 0x83);
-	}
+	TestEqual(TEXT("Base Location cannot be placed like a job"), System.CreateEventOfType(TYPE_BaseLocation), INDEX_NONE);
+	TestEqual(TEXT("Base Location plays no radio"), World.RadioVoiceCalls.Num(), 0);
 
 	World.RadioVoiceCalls.Reset();
 	const int32 RiotId = System.CreateEventOfType(TYPE_Riot);
@@ -2417,3 +2430,236 @@ bool FSimCopterPassengersAboardNeverFailMissionTest::RunTest(const FString& Para
 	return true;
 }
 
+
+// City entry (FUN_0047a240) ends with FUN_004a7a10(DAT_005d91d0, DAT_005d91d4, 0x100000): the
+// permanent Base Location record at the airport, which is what the cockpit map points at when no job
+// is selected. It is not a job - no id, no announcement, no lifecycle - but it does count in
+// DAT_0057f9c8 like one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimCopterBaseLocationRecordTest,
+	"SimCopter.Missions.BaseLocationRecord",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterBaseLocationRecordTest::RunTest(const FString& Parameters)
+{
+	FSimCopterTestMissionWorld World;
+	FSimCopterMissionSystem System;
+	System.Initialize(&World, 1);
+
+	const int32 Slot = System.EnsureBaseLocationRecord(96, 76);
+	TestEqual(TEXT("Created in the first free slot, as after FUN_004a6c80 empties the table"), Slot, 0);
+	if (!System.GetRecords().IsValidIndex(Slot))
+	{
+		return false;
+	}
+	const FSimCopterMissionRecord& Base = System.GetRecords()[Slot];
+	TestTrue(TEXT("Base Location is live"), Base.bActive);
+	TestEqual(TEXT("Base Location mask"), Base.TypeMask, static_cast<int32>(TYPE_BaseLocation));
+	TestEqual(TEXT("Base Location has event id -1"), Base.EventId, -1);
+	TestEqual(TEXT("Base Location name is string 586"), Base.Name, FString(TEXT("Base Location")));
+	TestEqual(TEXT("Base Location category 0"), Base.Category, static_cast<int32>(CAT_Active));
+	TestEqual(TEXT("Base Location tile X"), Base.TileX, 96);
+	TestEqual(TEXT("Base Location tile Y"), Base.TileY, 76);
+	TestEqual(TEXT("Base Location has no +0x30"), Base.SecondaryX, -1);
+	TestEqual(TEXT("Base Location has no +0x38"), Base.TertiaryX, -1);
+	TestEqual(TEXT("With nothing selected it becomes the map's selection"), System.GetMapFocusRecordIndex(), Slot);
+	TestEqual(TEXT("It counts in DAT_0057f9c8 like a live job"), System.GetActiveMissionCount(), 1);
+	TestEqual(TEXT("It is not announced (no ticker / career log line)"), World.UiMessages.Num(), 0);
+	TestEqual(TEXT("It plays no radio"), World.RadioVoiceCalls.Num(), 0);
+	TestNull(TEXT("No event can address it (FUN_004a8890 refuses -1)"), System.FindRecord(-1));
+
+	TestEqual(TEXT("A second call finds the same record"), System.EnsureBaseLocationRecord(97, 77), Slot);
+	TestEqual(TEXT("...and moves it to the airport once known"), System.GetRecords()[Slot].TileX, 97);
+	System.EnsureBaseLocationRecord(-1, -1);
+	TestEqual(TEXT("An unknown airport does not move it"), System.GetRecords()[Slot].TileX, 97);
+	int32 BaseCount = 0;
+	for (const FSimCopterMissionRecord& Record : System.GetRecords())
+	{
+		BaseCount += FSimCopterMissionSystem::IsBaseLocationRecord(Record) ? 1 : 0;
+	}
+	TestEqual(TEXT("Only ever one Base Location record"), BaseCount, 1);
+	TestEqual(TEXT("Still counted once"), System.GetActiveMissionCount(), 1);
+
+	// FUN_004a73e0 skips the whole record: it never completes, expires or scores.
+	const int32 ScoreBefore = System.GetScore();
+	for (int32 Second = 0; Second < 900; ++Second)
+	{
+		System.Tick(1.0f);
+	}
+	TestTrue(TEXT("Base Location survives the lifecycle"), System.GetRecords()[Slot].bActive);
+	TestEqual(TEXT("Base Location never scores"), System.GetScore(), ScoreBefore);
+	TestEqual(TEXT("Still selected"), System.GetMapFocusRecordIndex(), Slot);
+	return true;
+}
+
+// DAT_0057f9d8, the map's selection, as the mission layer drives it: FUN_004a7a10/FUN_004a73e0 adopt
+// only into an empty selection, FUN_004a73e0 re-picks the first live record when the SELECTED one
+// completes, the category-4 arm leaves a dead record selected, and FUN_004a9860/FUN_004a9900 cycle.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimCopterMapFocusRulesTest,
+	"SimCopter.Missions.MapFocusRules",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterMapFocusRulesTest::RunTest(const FString& Parameters)
+{
+	FSimCopterTestMissionWorld World;
+	FSimCopterMissionSystem System;
+	System.Initialize(&World, 1);
+
+	const int32 BaseSlot = System.EnsureBaseLocationRecord(10, 10);
+	const int32 TransportId = System.CreateEventAt(40, 40, TYPE_Transport);
+	const int32 RobberId = System.CreateEventAt(50, 50, TYPE_Robber);
+	if (!TestTrue(TEXT("Fixtures created"), TransportId != INDEX_NONE && RobberId != INDEX_NONE))
+	{
+		return false;
+	}
+	TestEqual(TEXT("A new job does not take the selection from Base Location"), System.GetMapFocusRecordIndex(), BaseSlot);
+
+	// Cycling walks the live slots and wraps both ways.
+	System.FocusNextMapRecord();
+	TestEqual(TEXT("Next -> transport"), System.GetMapFocusRecordIndex(), 1);
+	System.FocusNextMapRecord();
+	TestEqual(TEXT("Next -> robber"), System.GetMapFocusRecordIndex(), 2);
+	System.FocusNextMapRecord();
+	TestEqual(TEXT("Next wraps to Base Location"), System.GetMapFocusRecordIndex(), BaseSlot);
+	System.FocusPreviousMapRecord();
+	TestEqual(TEXT("Previous wraps to the robber"), System.GetMapFocusRecordIndex(), 2);
+	System.FocusPreviousMapRecord();
+	TestEqual(TEXT("Previous -> transport"), System.GetMapFocusRecordIndex(), 1);
+
+	// Picking the party up does not move the selection; it only clears the pickup (+0x38).
+	const FSimCopterMissionRecord* Transport = System.FindRecord(TransportId);
+	const int32 Party = Transport->TransportPassengers;
+	System.PostEvent(EVT_VictimPickedUp, TransportId, Party);
+	System.Tick(1.0f / 60.0f);
+	Transport = System.FindRecord(TransportId);
+	TestEqual(TEXT("Pickup cleared once everybody is aboard"), Transport->TertiaryX, -1);
+	TestEqual(TEXT("Drop-off kept"), Transport->SecondaryX, 40);
+	TestEqual(TEXT("Picking up does not change the selection"), System.GetMapFocusRecordIndex(), 1);
+
+	// Delivering completes it, and the selected record completing re-picks the first live slot.
+	System.PostEvent(EVT_TransportDelivered, TransportId, Party);
+	System.Tick(1.0f / 60.0f);
+	TestNull(TEXT("Transport completed"), System.FindRecord(TransportId));
+	TestEqual(TEXT("Completion of the selected record returns to Base Location"), System.GetMapFocusRecordIndex(), BaseSlot);
+
+	// A record retired through category 4 is a failure, not a completion: it stays selected.
+	System.FocusNextMapRecord();
+	TestEqual(TEXT("Next skips the dead slot to the robber"), System.GetMapFocusRecordIndex(), 2);
+	System.PostEvent(EVT_SetCategory, RobberId, CAT_ExpireSilently);
+	System.Tick(1.0f / 60.0f);
+	TestNull(TEXT("Robber retired"), System.FindRecord(RobberId));
+	TestEqual(TEXT("A failed record stays selected (stale, as in the original)"), System.GetMapFocusRecordIndex(), 2);
+	System.FocusNextMapRecord();
+	TestEqual(TEXT("Cycling off a dead record still works"), System.GetMapFocusRecordIndex(), BaseSlot);
+
+	// With the selection empty, the lifecycle adopts the first live job - and passes over Base
+	// Location, which FUN_004a73e0 skips entirely.
+	const int32 SecondTransportId = System.CreateEventAt(60, 60, TYPE_Transport);
+	System.SetMapFocusRecordIndex(INDEX_NONE, EMapFocusReason::Reset);
+	System.Tick(1.0f / 60.0f);
+	const int32 SecondSlot = System.GetMapFocusRecordIndex();
+	TestTrue(TEXT("Lifecycle adopted a record"), System.GetRecords().IsValidIndex(SecondSlot));
+	if (System.GetRecords().IsValidIndex(SecondSlot))
+	{
+		TestEqual(TEXT("...the job, not Base Location"), System.GetRecords()[SecondSlot].EventId, SecondTransportId);
+	}
+
+	// Without a Base Location record a new job is adopted at creation, and a background record
+	// (category 2) never is.
+	FSimCopterTrafficJamTestWorld JamWorld;
+	FSimCopterMissionSystem Bare;
+	Bare.Initialize(&JamWorld, 1);
+	Bare.CreateEventAt(20, 20, TYPE_TrafficJam);
+	TestEqual(TEXT("A background jam is not adopted"), Bare.GetMapFocusRecordIndex(), INDEX_NONE);
+	const int32 BareTransportId = Bare.CreateEventAt(30, 30, TYPE_Transport);
+	TestTrue(TEXT("Bare transport created"), BareTransportId != INDEX_NONE);
+	const int32 BareFocus = Bare.GetMapFocusRecordIndex();
+	TestTrue(TEXT("The first job is adopted"), Bare.GetRecords().IsValidIndex(BareFocus) &&
+		Bare.GetRecords()[BareFocus].EventId == BareTransportId);
+	return true;
+}
+
+// A save is read the way FUN_004ab3e0 reads it - the selection is re-picked, not trusted - and a save
+// written before the transport layout was ported (pickup in +0x28, destination in +0x30) is moved
+// into the ported one.
+IMPLEMENT_SIMPLE_AUTOMATION_TEST(
+	FSimCopterMissionSaveFocusAndLayoutTest,
+	"SimCopter.Missions.SaveFocusAndTransportLayout",
+	EAutomationTestFlags::EditorContext | EAutomationTestFlags::EngineFilter)
+
+bool FSimCopterMissionSaveFocusAndLayoutTest::RunTest(const FString& Parameters)
+{
+	FSimCopterTestMissionWorld World;
+	FSimCopterMissionSystem Source;
+	Source.Initialize(&World, 1);
+	Source.EnsureBaseLocationRecord(10, 10);
+	const int32 TransportId = Source.CreateEventAt(40, 42, TYPE_Transport);
+	if (!TestTrue(TEXT("Transport fixture"), TransportId != INDEX_NONE))
+	{
+		return false;
+	}
+	Source.FocusNextMapRecord();
+	TestEqual(TEXT("Transport selected before saving"), Source.GetMapFocusRecordIndex(), 1);
+
+	TArray<uint8> Bytes;
+	FMemoryWriter Writer(Bytes, true);
+	Source.SerializeRuntimeState(Writer);
+	Writer.Close();
+
+	FSimCopterMissionSystem Restored;
+	Restored.Initialize(&World, 1);
+	FMemoryReader Reader(Bytes, true);
+	TestTrue(TEXT("Reads"), Restored.SerializeRuntimeState(Reader));
+	TestEqual(TEXT("Loading re-picks the first live record"), Restored.GetMapFocusRecordIndex(), 0);
+	TestTrue(TEXT("Base Location survives the save"), FSimCopterMissionSystem::IsBaseLocationRecord(Restored.GetRecords()[0]));
+	const FSimCopterMissionRecord* Loaded = Restored.FindRecord(TransportId);
+	if (!TestNotNull(TEXT("Transport survives the save"), Loaded))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Ported layout is left alone (destination)"), Loaded->TileX, 40);
+	TestEqual(TEXT("Ported layout is left alone (pickup)"), Loaded->TertiaryX, Source.FindRecord(TransportId)->TertiaryX);
+
+	// Hand-build the old shape: pickup at +0x28, destination at +0x30, nothing at +0x38.
+	FSimCopterMissionSystem Legacy;
+	Legacy.Initialize(&World, 1);
+	const int32 LegacyId = Legacy.CreateEventAt(40, 42, TYPE_Transport);
+	FSimCopterMissionEvent Primary;
+	Primary.Code = EVT_SetPrimaryCoords;
+	Primary.EventId = LegacyId;
+	Primary.X = 70;
+	Primary.Y = 71;
+	Primary.bSilent = true;
+	Legacy.PostEvent(Primary);
+	FSimCopterMissionEvent Secondary = Primary;
+	Secondary.Code = EVT_SetSecondaryCoords;
+	Secondary.X = 20;
+	Secondary.Y = 21;
+	Legacy.PostEvent(Secondary);
+	FSimCopterMissionEvent Tertiary = Primary;
+	Tertiary.Code = EVT_SetTertiaryCoords;
+	Tertiary.X = -1;
+	Tertiary.Y = -1;
+	Legacy.PostEvent(Tertiary);
+
+	TArray<uint8> LegacyBytes;
+	FMemoryWriter LegacyWriter(LegacyBytes, true);
+	Legacy.SerializeRuntimeState(LegacyWriter);
+	LegacyWriter.Close();
+	FSimCopterMissionSystem Migrated;
+	Migrated.Initialize(&World, 1);
+	FMemoryReader LegacyReader(LegacyBytes, true);
+	TestTrue(TEXT("Legacy save reads"), Migrated.SerializeRuntimeState(LegacyReader));
+	const FSimCopterMissionRecord* Moved = Migrated.FindRecord(LegacyId);
+	if (!TestNotNull(TEXT("Legacy transport survives"), Moved))
+	{
+		return false;
+	}
+	TestEqual(TEXT("Legacy destination moves to +0x28 (X)"), Moved->TileX, 20);
+	TestEqual(TEXT("Legacy destination moves to +0x28 (Y)"), Moved->TileY, 21);
+	TestEqual(TEXT("Legacy pickup moves to +0x38 (X)"), Moved->TertiaryX, 70);
+	TestEqual(TEXT("Legacy pickup moves to +0x38 (Y)"), Moved->TertiaryY, 71);
+	TestEqual(TEXT("Drop-off unchanged"), Moved->SecondaryX, 20);
+	return true;
+}

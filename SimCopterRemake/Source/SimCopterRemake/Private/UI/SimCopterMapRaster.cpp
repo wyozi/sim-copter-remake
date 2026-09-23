@@ -552,6 +552,13 @@ void FSimCopterMapRaster::BlitIconAt(
 
 void FSimCopterMapRaster::DrawMissionLines(const FSimCopterMapFrame& Frame, const FSimCopterMapSettings& Settings)
 {
+	// SCHOOK: MapSelectedMissionLines 0x004a3820. With nothing selected (DAT_0057f9d8 == 0) the
+	// needle is all it draws. Otherwise two fading lines and NO icons (both FUN_004a3a00 calls pass
+	// icon -1):
+	//   A  to +0x30 when set, else +0x28 (FUN_004a8960 / FUN_004a8940), shade 0x3f - 16*len/0x184
+	//   B  to +0x38 when set (FUN_004a8990),                              shade 0x6a -  8*len/0x184
+	// There is no "has the job begun" switch: a transport draws A to its drop-off and B to its pickup
+	// from the start, and B simply vanishes when FUN_004a73e0 clears +0x38 after the pickup.
 	if (!Frame.Missions.IsValidIndex(Frame.CurrentMission))
 	{
 		return;
@@ -559,30 +566,20 @@ void FSimCopterMapRaster::DrawMissionLines(const FSimCopterMapFrame& Frame, cons
 	const FSimCopterMapMission& Mission = Frame.Missions[Frame.CurrentMission];
 	const int32 Zoom = FMath::Clamp(Settings.Zoom, 0, MaxZoom);
 
-	// Primary line goes to Mission.Tile (the pickup / mission site) until the player has begun the
-	// mission (bBegun is true). Once begun, it points to Mission.Secondary (the dropoff/hospital).
-	FIntPoint Primary = Mission.Tile;
-	FIntPoint Secondary = (Mission.Secondary.X != INDEX_NONE) ? Mission.Secondary : Mission.Tertiary;
-
-	if (Mission.bBegun && Mission.Secondary.X != INDEX_NONE)
+	const FIntPoint LineA = (Mission.Secondary.X != INDEX_NONE) ? Mission.Secondary : Mission.Tile;
+	if (LineA.X != INDEX_NONE)
 	{
-		Primary = Mission.Secondary;
-		Secondary = Mission.Tertiary;
-	}
-
-	if (Primary.X != INDEX_NONE)
-	{
-		const int32 TileDeltaX = Primary.X - Frame.CentreTile.X;
-		const int32 TileDeltaY = Primary.Y - Frame.CentreTile.Y;
+		const int32 TileDeltaX = LineA.X - Frame.CentreTile.X;
+		const int32 TileDeltaY = LineA.Y - Frame.CentreTile.Y;
 		const int32 Length = OctagonalLength(TileDeltaX, TileDeltaY);
 		const int32 Shade = Color::PrimaryLineBase - (Length << Color::PrimaryLineShift) / Color::LineFadeDivisor;
 		DrawRay(-TileDeltaY << Zoom, -TileDeltaX << Zoom, static_cast<uint8>(Shade), INDEX_NONE, nullptr, false);
 	}
 
-	if (Secondary.X != INDEX_NONE && Secondary != Primary)
+	if (Mission.Tertiary.X != INDEX_NONE)
 	{
-		const int32 TileDeltaX = Secondary.X - Frame.CentreTile.X;
-		const int32 TileDeltaY = Secondary.Y - Frame.CentreTile.Y;
+		const int32 TileDeltaX = Mission.Tertiary.X - Frame.CentreTile.X;
+		const int32 TileDeltaY = Mission.Tertiary.Y - Frame.CentreTile.Y;
 		const int32 Length = OctagonalLength(TileDeltaX, TileDeltaY);
 		const int32 Shade = Color::SecondaryLineBase - (Length << Color::SecondaryLineShift) / Color::LineFadeDivisor;
 		DrawRay(-TileDeltaY << Zoom, -TileDeltaX << Zoom, static_cast<uint8>(Shade), INDEX_NONE, nullptr, false);
@@ -607,12 +604,17 @@ void FSimCopterMapRaster::DrawHeadingNeedle(const FSimCopterMapFrame& Frame)
 
 void FSimCopterMapRaster::DrawOtherMissions(const FSimCopterMapFrame& Frame, const FSimCopterMapSettings& Settings)
 {
+	// SCHOOK: MapOtherMissionIcons 0x004a4200. Every live, non-background record except the
+	// selected one gets FUN_004a4000's two icons, walked out along an invisible (colour 0) ray so an
+	// off-view record is pinned to the map's edge on its bearing:
+	//   first icon  at +0x30 when set, else +0x28 when set
+	//   second icon at +0x38 when set
+	// FUN_004a3f20 only stamps them while DAT_00505f0c (the mission-marker toggle) is on.
 	const int32 Zoom = FMath::Clamp(Settings.Zoom, 0, MaxZoom);
 
 	for (int32 Index = 0; Index < Frame.Missions.Num() && Index < MaxMissions; ++Index)
 	{
 		const FSimCopterMapMission& Mission = Frame.Missions[Index];
-		// The selected mission is skipped: it is already the one with the two direction lines.
 		if (!Mission.IsSelectable() || Index == Frame.CurrentMission)
 		{
 			continue;
@@ -622,15 +624,7 @@ void FSimCopterMapRaster::DrawOtherMissions(const FSimCopterMapFrame& Frame, con
 		int32 SecondaryIcon = INDEX_NONE;
 		GetMissionIcons(Mission.TypeMask, PrimaryIcon, SecondaryIcon);
 
-		FIntPoint Primary = Mission.Tile;
-		FIntPoint Secondary = (Mission.Secondary.X != INDEX_NONE) ? Mission.Secondary : Mission.Tertiary;
-
-		if (Mission.bBegun && Mission.Secondary.X != INDEX_NONE)
-		{
-			Primary = Mission.Secondary;
-			Secondary = Mission.Tertiary;
-		}
-
+		const FIntPoint Primary = (Mission.Secondary.X != INDEX_NONE) ? Mission.Secondary : Mission.Tile;
 		if (Primary.X != INDEX_NONE)
 		{
 			DrawRay(
@@ -642,11 +636,11 @@ void FSimCopterMapRaster::DrawOtherMissions(const FSimCopterMapFrame& Frame, con
 				Settings.bShowMissionBlips);
 		}
 
-		if (Secondary.X != INDEX_NONE && Secondary != Primary)
+		if (Mission.Tertiary.X != INDEX_NONE)
 		{
 			DrawRay(
-				-(Secondary.Y - Frame.CentreTile.Y) << Zoom,
-				-(Secondary.X - Frame.CentreTile.X) << Zoom,
+				-(Mission.Tertiary.Y - Frame.CentreTile.Y) << Zoom,
+				-(Mission.Tertiary.X - Frame.CentreTile.X) << Zoom,
 				0,
 				SecondaryIcon,
 				Frame.MissionIcons,
@@ -761,8 +755,7 @@ void FSimCopterMapRaster::GetMissionIcons(const int32 TypeMask, int32& OutPrimar
 		OutPrimaryIcon = 1;
 		OutSecondaryIcon = 4;
 		break;
-	case 0x40:     // transport
-		OutPrimaryIcon = 3;
+	case 0x40:     // transport: nothing at the drop-off, icon 3 at the pickup (+0x38) only
 		OutSecondaryIcon = 3;
 		break;
 	case 0x200:    // robber

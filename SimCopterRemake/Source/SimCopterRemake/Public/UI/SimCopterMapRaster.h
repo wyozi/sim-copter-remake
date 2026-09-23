@@ -163,7 +163,6 @@ struct SIMCOPTERREMAKE_API FSimCopterMapMission
 	int32 TypeMask = 0;           // +0x50, picks the icons
 	int32 Category = 0;           // +0x54, 2 = finished and off the map
 	bool bActive = false;         // +0x4c bit 0
-	bool bBegun = false;          // True when the player has begun the mission (e.g. passenger/patient picked up)
 	FIntPoint Tile = FIntPoint(INDEX_NONE, INDEX_NONE);      // +0x28/+0x2c
 	FIntPoint Secondary = FIntPoint(INDEX_NONE, INDEX_NONE); // +0x30/+0x34
 	FIntPoint Tertiary = FIntPoint(INDEX_NONE, INDEX_NONE);  // +0x38/+0x3c
@@ -197,7 +196,9 @@ struct SIMCOPTERREMAKE_API FSimCopterMapFrame
 	int32 HeadingZ1616 = 0;
 
 	TArray<FSimCopterMapMission> Missions;
-	// Index into Missions of the mission the buttons cycle and the label names, or INDEX_NONE.
+	// Index into Missions of the selected record - DAT_0057f9d8, owned by the mission layer - or
+	// INDEX_NONE, which draws the heading needle and nothing else from FUN_004a3820. It may name a
+	// record that is no longer live: the original keeps drawing a record retired without completing.
 	int32 CurrentMission = INDEX_NONE;
 
 	TArray<FSimCopterMapServiceBlip> ServiceBlips;
@@ -243,7 +244,8 @@ public:
 	// these to turn a click into a tile.
 	FIntPoint GetViewOriginTile() const { return ViewOriginTile; }
 
-	// FUN_004a4000: the two page-3 cells a mission type is drawn with, or INDEX_NONE.
+	// FUN_004a4000: the two page-3 cells a mission type is drawn with, or INDEX_NONE. The first goes
+	// at (+0x30, else +0x28), the second at +0x38.
 	static void GetMissionIcons(int32 TypeMask, int32& OutPrimaryIcon, int32& OutSecondaryIcon);
 
 	// FUN_004a3ec0 / FUN_004a3ed0: the previous/next selectable mission, wrapping the way the

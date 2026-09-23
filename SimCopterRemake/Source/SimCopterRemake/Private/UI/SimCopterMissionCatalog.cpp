@@ -29,10 +29,10 @@ const FSimCopterMissionCatalogEntry GMissionCatalog[] =
 	{ TYPE_Medevac,      TEXT("MedEvac"),      TEXT("MedEvac"),   TEXT("1..tier injured people; deliver to the nearest hospital"), true },
 	{ TYPE_Transport,    TEXT("Transport"),    TEXT("Transport"), TEXT("building crowd pickup (spawn mode 4)"), true },
 
-	// The scheduler has no UFO bucket: the original's UFO is plane slot 1 (GEO 0x17c), which pays
-	// [General Miss] UFO Money/Points from FUN_004b2910 when it goes down. This entry only creates
-	// the bare record.
-	{ TYPE_Ufo,          TEXT("UFO"),          TEXT("(none)"),    TEXT("scheduler never rolls it; the flying UFO is plane slot 1, not this record"), true },
+	// No UFO row. 0x100000 was listed here as "UFO", but it is the Base Location record city entry
+	// creates (FUN_0047a240); summoning it would only have made a second one. The flying UFO is
+	// ambient plane slot 1 (GEO 0x17c), paid through EVT_UfoResolved when it goes down, and has no
+	// record of its own to load.
 };
 }
 

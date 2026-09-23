@@ -307,40 +307,27 @@ bool SSimCopterMapPanel::BuildFrame(FSimCopterMapFrame& OutFrame)
 			Mission.TypeMask = Record.TypeMask;
 			Mission.Category = Record.Category;
 			Mission.bActive = Record.bActive;
-			Mission.bBegun = MissionSystem->IsMissionBegun(Record);
 			Mission.Tile = FIntPoint(Record.TileX, Record.TileY);
 			Mission.Secondary = FIntPoint(Record.SecondaryX, Record.SecondaryY);
 			Mission.Tertiary = FIntPoint(Record.TertiaryX, Record.TertiaryY);
+			// REMAKE DATA, hidden from the map: the remake parks a medevac's hospital in +0x30 for its
+			// own hand-off code, where FUN_004a7a10's 0x20 branch leaves -1. Shown as the original
+			// record reads, the map points at the patient (+0x28) until they are picked up, not at
+			// the hospital. A transport that picked up the medevac bit keeps its real drop-off.
+			if ((Record.TypeMask & SimCopterMissions::TYPE_Medevac) != 0 &&
+				(Record.TypeMask & SimCopterMissions::TYPE_Transport) == 0)
+			{
+				Mission.Secondary = FIntPoint(INDEX_NONE, INDEX_NONE);
+			}
 			OutFrame.Missions.Add(MoveTemp(Mission));
 		}
-	}
 
-	// Re-resolve the selection by event id, so a record moving slots keeps it, and adopt the
-	// first live mission when there is none - which is the state the original's mission layer
-	// leaves DAT_0057f9d8 in as soon as a job is announced.
-	OutFrame.CurrentMission = INDEX_NONE;
-	for (int32 Index = 0; Index < OutFrame.Missions.Num(); ++Index)
-	{
-		if (OutFrame.Missions[Index].EventId == CurrentMissionEventId && OutFrame.Missions[Index].IsSelectable())
-		{
-			OutFrame.CurrentMission = Index;
-			break;
-		}
+		// DAT_0057f9d8 belongs to the mission layer (it adopts, re-picks on completion and keeps a
+		// dead record selected, all in FSimCopterMissionSystem); the map only reads it. The frame's
+		// mission array is the record table in slot order, so the slot is the index.
+		const int32 FocusIndex = MissionSystem->GetMapFocusRecordIndex();
+		OutFrame.CurrentMission = OutFrame.Missions.IsValidIndex(FocusIndex) ? FocusIndex : INDEX_NONE;
 	}
-	if (OutFrame.CurrentMission == INDEX_NONE)
-	{
-		for (int32 Index = 0; Index < OutFrame.Missions.Num(); ++Index)
-		{
-			if (OutFrame.Missions[Index].IsSelectable())
-			{
-				OutFrame.CurrentMission = Index;
-				break;
-			}
-		}
-	}
-	CurrentMissionEventId = OutFrame.Missions.IsValidIndex(OutFrame.CurrentMission)
-		? OutFrame.Missions[OutFrame.CurrentMission].EventId
-		: INDEX_NONE;
 
 	TArray<ASimCopterTrafficSystemActor::FServiceVehicleView> Vehicles;
 	TrafficSystem->GetActiveServiceVehicles(Vehicles);
@@ -572,29 +559,19 @@ void SSimCopterMapPanel::ZoomOut()
 
 void SSimCopterMapPanel::SelectPreviousMission()
 {
-	FSimCopterMapFrame Frame;
-	if (!BuildFrame(Frame))
+	// FUN_004a3ec0 -> FUN_004a9900, on the mission layer's own selection.
+	if (ASimCopterMissionSystemActor* MissionSystem = GetMissionSystem())
 	{
-		return;
-	}
-	const int32 Selected = FSimCopterMapRaster::FindPreviousMission(Frame.Missions, Frame.CurrentMission);
-	if (Frame.Missions.IsValidIndex(Selected))
-	{
-		CurrentMissionEventId = Frame.Missions[Selected].EventId;
+		MissionSystem->FocusPreviousMapMission();
 	}
 }
 
 void SSimCopterMapPanel::SelectNextMission()
 {
-	FSimCopterMapFrame Frame;
-	if (!BuildFrame(Frame))
+	// FUN_004a3ed0 -> FUN_004a9860.
+	if (ASimCopterMissionSystemActor* MissionSystem = GetMissionSystem())
 	{
-		return;
-	}
-	const int32 Selected = FSimCopterMapRaster::FindNextMission(Frame.Missions, Frame.CurrentMission);
-	if (Frame.Missions.IsValidIndex(Selected))
-	{
-		CurrentMissionEventId = Frame.Missions[Selected].EventId;
+		MissionSystem->FocusNextMapMission();
 	}
 }
 

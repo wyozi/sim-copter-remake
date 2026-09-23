@@ -157,6 +157,13 @@ public:
 	{
 		return MissionSystem.GetRecords();
 	}
+	// DAT_0057f9d8: the slot the cockpit map has selected, or INDEX_NONE. Owned by the mission
+	// layer, as in the original - see FSimCopterMissionSystem::SetMapFocusRecordIndex for the rules
+	// and the single write point.
+	int32 GetMapFocusRecordIndex() const { return MissionSystem.GetMapFocusRecordIndex(); }
+	// The map's previous/next buttons: FUN_004a3ec0 -> FUN_004a9900, FUN_004a3ed0 -> FUN_004a9860.
+	void FocusPreviousMapMission() { MissionSystem.FocusPreviousMapRecord(); }
+	void FocusNextMapMission() { MissionSystem.FocusNextMapRecord(); }
 	// FUN_004a9230(mask): the event id of the first live record carrying every bit of TypeMask, or
 	// INDEX_NONE. Behaviour opcodes 24 and 28 use it to find the running riot.
 	int32 FindActiveMissionOfType(int32 TypeMask) const;
@@ -576,6 +583,9 @@ private:
 	// when bAllowScheduledMissions is false) and open the session with the original's start
 	// money/score.
 	void BeginSession(ESimCopterMissionSessionMode Mode, int32 CareerCityIndex, bool bAllowScheduledMissions);
+	// FUN_0047a240's last call: the Base Location record at the airport origin + 1
+	// (DAT_005d91d0/d4). Safe to call every tick; see FSimCopterMissionSystem::EnsureBaseLocationRecord.
+	void EnsureBaseLocationRecord();
 
 	// Renders the cloned FIREPTS fire/smoke marker effects for every active building flame; driven
 	// each tick from MissionSystem.GetFlames().

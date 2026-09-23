@@ -288,31 +288,58 @@ bool FSimCopterMapOverlaysTest::RunTest(const FString&)
 	TestEqual(TEXT("Primary ray shade"), Raster.GetPixel(CentreX + 10, CentreY), static_cast<uint8>(0x3e));
 	TestEqual(TEXT("Secondary ray shade"), Raster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x6a));
 
-	// Test Transport mission line targeting before and after pickup (bBegun false vs true)
+	// FUN_004a3820 on a selected transport, laid out as FUN_004a7a10's 0x40 branch writes it:
+	// +0x28 and +0x30 the drop-off, +0x38 the pickup. Line A (grey) goes to +0x30, line B (red) to
+	// +0x38 - both from the start, with no "begun" switch - and B goes when the pickup is cleared.
 	FSimCopterMapMission TransportMission;
 	TransportMission.Name = TEXT("Transport #1");
 	TransportMission.EventId = 8;
-	TransportMission.TypeMask = 0x40;  // Transport
+	TransportMission.TypeMask = 0x40;
 	TransportMission.bActive = true;
-	TransportMission.bBegun = false;
-	TransportMission.Tile = FIntPoint(64, 44);      // Passenger at 20 tiles East
-	TransportMission.Secondary = FIntPoint(44, 64); // Dropoff at 20 tiles South
+	TransportMission.Tile = FIntPoint(44, 64);      // drop-off, 20 tiles South
+	TransportMission.Secondary = FIntPoint(44, 64); // FUN_004a7a10 copies +0x28 into +0x30
+	TransportMission.Tertiary = FIntPoint(64, 44);  // pickup, 20 tiles East
 
 	FSimCopterMapFrame TransportFrame = Frame;
 	TransportFrame.Missions.Reset();
 	TransportFrame.Missions.Add(TransportMission);
 	TransportFrame.CurrentMission = 0;
 
-	// Before pickup (bBegun = false): Primary line goes to Passenger (East), Secondary line to Dropoff (South)
 	FSimCopterMapRaster TransportRaster;
 	TransportRaster.Render(TransportFrame, Settings);
-	TestEqual(TEXT("Unbegun transport primary ray goes to passenger (East)"), TransportRaster.GetPixel(CentreX + 10, CentreY), static_cast<uint8>(0x3e));
-	TestEqual(TEXT("Unbegun transport secondary ray goes to dropoff (South)"), TransportRaster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x6a));
+	TestEqual(TEXT("Selected transport: line A goes to the drop-off (South)"), TransportRaster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x3e));
+	TestEqual(TEXT("Selected transport: line B goes to the pickup (East)"), TransportRaster.GetPixel(CentreX + 10, CentreY), static_cast<uint8>(0x6a));
+	TestNotEqual(TEXT("A selected mission gets no icon"), TransportRaster.GetPixel(CentreX + 20, CentreY + 3), static_cast<uint8>(0x11));
 
-	// After pickup (bBegun = true): Primary line switches to Dropoff (South)
-	TransportFrame.Missions[0].bBegun = true;
+	// Everybody picked up: FUN_004a73e0 clears +0x38 and only the drop-off line is left.
+	TransportFrame.Missions[0].Tertiary = FIntPoint(INDEX_NONE, INDEX_NONE);
 	TransportRaster.Render(TransportFrame, Settings);
-	TestEqual(TEXT("Begun transport primary ray goes to dropoff (South)"), TransportRaster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x3e));
+	TestEqual(TEXT("After pickup the drop-off line stays"), TransportRaster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x3e));
+	TestNotEqual(TEXT("After pickup the pickup line is gone"), TransportRaster.GetPixel(CentreX + 10, CentreY), static_cast<uint8>(0x6a));
+
+	// Nothing selected: the needle, and no line at all.
+	TransportFrame.Missions[0].Tertiary = FIntPoint(64, 44);
+	TransportFrame.CurrentMission = INDEX_NONE;
+	TransportRaster.Render(TransportFrame, Settings);
+	TestNotEqual(TEXT("No selection draws no line A"), TransportRaster.GetPixel(CentreX, CentreY + 10), static_cast<uint8>(0x3e));
+	TestNotEqual(TEXT("No selection draws no line B"), TransportRaster.GetPixel(CentreX + 10, CentreY), static_cast<uint8>(0x6a));
+
+	// ...and the transport, now one of FUN_004a4200's "other" records, is icon 3 at the pickup and
+	// nothing at the drop-off (FUN_004a4000(0x40) = -1, 3).
+	TestEqual(TEXT("Unselected transport: icon at the pickup"), TransportRaster.GetPixel(CentreX + 20, CentreY + 3), static_cast<uint8>(0x11));
+	TestNotEqual(TEXT("Unselected transport: no icon at the drop-off"), TransportRaster.GetPixel(CentreX + 3, CentreY + 20), static_cast<uint8>(0x11));
+
+	// The marker toggle (DAT_00505f0c) hides the icons.
+	FSimCopterMapSettings NoBlips = Settings;
+	NoBlips.bShowMissionBlips = false;
+	TransportRaster.Render(TransportFrame, NoBlips);
+	TestNotEqual(TEXT("Marker toggle off hides the pickup icon"), TransportRaster.GetPixel(CentreX + 20, CentreY + 3), static_cast<uint8>(0x11));
+
+	// Picked up and unselected: nothing left to draw for it.
+	TransportFrame.Missions[0].Tertiary = FIntPoint(INDEX_NONE, INDEX_NONE);
+	TransportRaster.Render(TransportFrame, Settings);
+	TestNotEqual(TEXT("Picked-up unselected transport has no icon at the old pickup"), TransportRaster.GetPixel(CentreX + 20, CentreY + 3), static_cast<uint8>(0x11));
+	TestNotEqual(TEXT("Picked-up unselected transport has no icon at the drop-off"), TransportRaster.GetPixel(CentreX + 3, CentreY + 20), static_cast<uint8>(0x11));
 
 	// FUN_004a4000's table, keyed on the whole type mask rather than its bits.
 	int32 Primary = INDEX_NONE;
@@ -323,6 +350,12 @@ bool FSimCopterMapOverlaysTest::RunTest(const FString&)
 	FSimCopterMapRaster::GetMissionIcons(0x90, Primary, Secondary);
 	TestEqual(TEXT("Boat rescue is its own row"), Primary, 4);
 	TestEqual(TEXT("Boat rescue has one icon"), Secondary, INDEX_NONE);
+	FSimCopterMapRaster::GetMissionIcons(0x40, Primary, Secondary);
+	TestEqual(TEXT("Transport has no drop-off icon"), Primary, INDEX_NONE);
+	TestEqual(TEXT("Transport pickup icon"), Secondary, 3);
+	FSimCopterMapRaster::GetMissionIcons(0x100000, Primary, Secondary);
+	TestEqual(TEXT("Base Location has no icon"), Primary, INDEX_NONE);
+	TestEqual(TEXT("Base Location has no second icon"), Secondary, INDEX_NONE);
 	FSimCopterMapRaster::GetMissionIcons(0x800, Primary, Secondary);
 	TestEqual(TEXT("Traffic jam uses one icon twice"), Primary, 5);
 	TestEqual(TEXT("Traffic jam secondary"), Secondary, 5);

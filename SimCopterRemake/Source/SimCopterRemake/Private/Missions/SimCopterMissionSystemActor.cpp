@@ -497,6 +497,9 @@ void ASimCopterMissionSystemActor::Tick(float DeltaTime)
 
 	SessionElapsedSeconds += DeltaTime;
 
+	// Cheap (a 30-slot scan), and it covers an airport placed after the session opened and a save
+	// restored from before the record existed.
+	EnsureBaseLocationRecord();
 	MissionSystem.Tick(DeltaTime);
 	ProcessPassengerTransfers(DeltaTime);
 	ProcessRescueTransfers();
@@ -882,6 +885,10 @@ void ASimCopterMissionSystemActor::BeginSession(
 	bSessionSelectionHeld = false;
 	SessionElapsedSeconds = 0.0f;
 
+	// City entry ends by creating the Base Location record, before any job can be rolled, so it
+	// takes the first free slot and becomes the map's selection.
+	EnsureBaseLocationRecord();
+
 	// The career record opens with the session: an empty log and the starter airframe on the
 	// books, unless this is the same career arriving in its next city. The prices the catalog
 	// quotes come from the same heli.twk the flight model reads.
@@ -908,6 +915,23 @@ void ASimCopterMissionSystemActor::BeginSession(
 			0,
 			0.0f);
 	}
+}
+
+void ASimCopterMissionSystemActor::EnsureBaseLocationRecord()
+{
+	// DAT_005d91d0/d4 = the airport origin (_DAT_005d91b0/b4) + 1, written by FUN_004829f0. Until the
+	// traffic system has placed the airport the record waits at (-1, -1), which FUN_004a3820 draws
+	// as no line at all; the per-tick call moves it once the origin is known.
+	FIntPoint BaseTile(INDEX_NONE, INDEX_NONE);
+	if (const ASimCopterTrafficSystemActor* TrafficSystem = ResolveTrafficSystem())
+	{
+		const FIntPoint AirportOrigin = TrafficSystem->GetAirportOriginTile();
+		if (AirportOrigin.X >= 0 && AirportOrigin.Y >= 0)
+		{
+			BaseTile = FIntPoint(AirportOrigin.X + 1, AirportOrigin.Y + 1);
+		}
+	}
+	MissionSystem.EnsureBaseLocationRecord(BaseTile.X, BaseTile.Y);
 }
 
 void ASimCopterMissionSystemActor::StartFreeRoamSession(int32 CareerCityIndex)
@@ -2601,8 +2625,9 @@ void ASimCopterMissionSystemActor::ProcessPassengerTransfers(const float DeltaSe
 
 		FPassengerMissionSnapshot Snapshot;
 		Snapshot.EventId = Record.EventId;
-		Snapshot.PickupX = Record.TileX;
-		Snapshot.PickupY = Record.TileY;
+		// A transport waits at +0x38 (FUN_004a7a10's 0x40 branch); a medevac patient lies at +0x28.
+		Snapshot.PickupX = bTransport ? Record.TertiaryX : Record.TileX;
+		Snapshot.PickupY = bTransport ? Record.TertiaryY : Record.TileY;
 		Snapshot.DropoffX = Record.SecondaryX;
 		Snapshot.DropoffY = Record.SecondaryY;
 		Snapshot.bTransport = bTransport;
@@ -3956,6 +3981,11 @@ void ASimCopterMissionSystemActor::BuildMissionWorldMarkers(TArray<FSimCopterMis
 		{
 			continue;
 		}
+		// The Base Location record is not a job; the hangar's own tag above already marks the base.
+		if (SimCopterMissions::FSimCopterMissionSystem::IsBaseLocationRecord(Record))
+		{
+			continue;
+		}
 
 		const bool bHasDropoff = IsValidMissionTile(Record.SecondaryX, Record.SecondaryY);
 		const bool bHasPassengerPickup = (Record.TypeMask & SimCopterMissions::TYPE_Transport) != 0;
@@ -3965,13 +3995,16 @@ void ASimCopterMissionSystemActor::BuildMissionWorldMarkers(TArray<FSimCopterMis
 
 		if (bHasPassengerPickup)
 		{
+			// The record's own pair of markers (FUN_004a7a10's 0x40 layout): the pickup at +0x38 for
+			// as long as FUN_004a73e0 leaves it set - it clears once everybody is picked up, dead or
+			// lost - and the drop-off at +0x30 once somebody is aboard or delivered.
+			if (IsValidMissionTile(Record.TertiaryX, Record.TertiaryY))
+			{
+				AddTileMarker(Record.TertiaryX, Record.TertiaryY, TEXT("TRANSPORT"), Record.Name, FLinearColor(0.08f, 0.46f, 0.95f, 1.0f));
+			}
 			if (bBegun && bHasDropoff)
 			{
 				AddTileMarker(Record.SecondaryX, Record.SecondaryY, TEXT("DROPOFF"), Record.Name, FLinearColor(0.05f, 0.72f, 0.32f, 1.0f));
-			}
-			else
-			{
-				AddTileMarker(Record.TileX, Record.TileY, TEXT("TRANSPORT"), Record.Name, FLinearColor(0.08f, 0.46f, 0.95f, 1.0f));
 			}
 			continue;
 		}

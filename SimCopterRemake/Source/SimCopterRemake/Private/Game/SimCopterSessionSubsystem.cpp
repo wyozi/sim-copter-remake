@@ -3,8 +3,62 @@
 #include "Game/SimCopterSessionSubsystem.h"
 
 #include "Formats/SimCopterOriginalGamePaths.h"
+#include "Containers/Ticker.h"
 #include "HAL/FileManager.h"
+#include "HAL/PlatformTime.h"
+#include "Misc/CommandLine.h"
+#include "Misc/Parse.h"
 #include "Misc/Paths.h"
+#include "Engine/GameInstance.h"
+#include "Engine/World.h"
+#include "GameFramework/PlayerController.h"
+
+void USimCopterSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
+{
+	Super::Initialize(Collection);
+
+	int32 CommandLineCareerCity = INDEX_NONE;
+	if (FParse::Value(FCommandLine::Get(), TEXT("SimCopterCareerCity="), CommandLineCareerCity))
+	{
+		RequestCareerCity(CommandLineCareerCity);
+	}
+
+	// `-SimCopterBenchCmds="@8:SimBoardHelicopter;@12:csvprofile frames=900;@40:HighResShot 1"`: console
+	// commands run through the player controller that many seconds after launch, so a benchmark can
+	// fly to a fixed view before it starts measuring. -ExecCmds runs everything on the first frame,
+	// before the city, the pawn or the airport placement exist.
+	FString BenchCommands;
+	if (FParse::Value(FCommandLine::Get(), TEXT("SimCopterBenchCmds="), BenchCommands, /*bShouldStopOnSeparator=*/false))
+	{
+		TArray<FString> Entries;
+		BenchCommands.ParseIntoArray(Entries, TEXT(";"));
+		const double LaunchSeconds = FPlatformTime::Seconds();
+		for (const FString& Entry : Entries)
+		{
+			FString Delay;
+			FString Command;
+			if (!Entry.TrimStart().Split(TEXT(":"), &Delay, &Command) || !Delay.StartsWith(TEXT("@")))
+			{
+				continue;
+			}
+			const double RunAtSeconds = LaunchSeconds + FCString::Atod(*Delay.RightChop(1));
+			FTSTicker::GetCoreTicker().AddTicker(FTickerDelegate::CreateWeakLambda(this,
+				[this, RunAtSeconds, Command](float)
+				{
+					if (FPlatformTime::Seconds() < RunAtSeconds)
+					{
+						return true;
+					}
+					UWorld* World = GetGameInstance() != nullptr ? GetGameInstance()->GetWorld() : nullptr;
+					if (APlayerController* Controller = World != nullptr ? World->GetFirstPlayerController() : nullptr)
+					{
+						Controller->ConsoleCommand(Command);
+					}
+					return false;
+				}));
+		}
+	}
+}
 
 void USimCopterSessionSubsystem::RequestCareerCity(int32 InCareerCityIndex)
 {

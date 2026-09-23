@@ -31,6 +31,12 @@ class SIMCOPTERREMAKE_API USimCopterSessionSubsystem : public UGameInstanceSubsy
 	GENERATED_BODY()
 
 public:
+	// `-SimCopterCareerCity=N` stands in for the front end's New Career Game pick, so a direct
+	// `/Game/CityRender` launch (benchmarks, automation) boots into a real city. It has to be set
+	// here, before any map loads: the city actor reads the session in its own BeginPlay, ahead of
+	// the game mode. Without it the level falls back to its authored city, a developer's absolute path.
+	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+
 	// Session-only: returning from a city must not replay startup movies.
 	bool bStartupIntrosShown = false;
 

@@ -1923,6 +1923,10 @@ private:
 	// to look at the sky rather than wherever the helicopter camera points.
 	UFUNCTION(Exec)
 	void SimBenchView(float X, float Y, float Z, float Pitch, float Yaw);
+	// Turns Low Power Graphics on (1) or off (0) exactly as the Settings page's checkbox does;
+	// bSave = 1 also runs the page's OK (USimCopterSettings::Save, which re-applies the video mode).
+	UFUNCTION(Exec)
+	void SimLowPower(int32 bEnabled, int32 bSave = 0);
 
 	// Emergency dispatch console commands, so F2-F5 can also be exercised headlessly.
 	// Service: 0 fire truck, 1 police, 2 ambulance (SimCopterDispatch::EService order).

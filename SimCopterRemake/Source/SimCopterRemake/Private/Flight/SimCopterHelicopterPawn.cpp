@@ -8819,6 +8819,20 @@ void ASimCopterHelicopterPawn::SimGrantTool(int32 ToolIndex, int32 bGranted)
 		EquipmentState.GetEffectiveEquipmentMask());
 }
 
+void ASimCopterHelicopterPawn::SimLowPower(int32 bEnabled, int32 bSave)
+{
+	if (USimCopterSettings* Settings = USimCopterSettings::Get(this))
+	{
+		Settings->SetLowPowerMode(bEnabled != 0);
+		Settings->ApplyAll(nullptr);
+		if (bSave != 0)
+		{
+			Settings->Save();
+		}
+		UE_LOG(LogSimCopterHelicopterPawn, Display, TEXT("SimLowPower: %d (save %d)"), bEnabled != 0 ? 1 : 0, bSave != 0 ? 1 : 0);
+	}
+}
+
 void ASimCopterHelicopterPawn::SimBenchView(float X, float Y, float Z, float Pitch, float Yaw)
 {
 	APlayerController* Controller = Cast<APlayerController>(GetController());

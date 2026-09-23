@@ -36,6 +36,7 @@ public:
 	// here, before any map loads: the city actor reads the session in its own BeginPlay, ahead of
 	// the game mode. Without it the level falls back to its authored city, a developer's absolute path.
 	virtual void Initialize(FSubsystemCollectionBase& Collection) override;
+	virtual void Deinitialize() override;
 
 	// Session-only: returning from a city must not replay startup movies.
 	bool bStartupIntrosShown = false;

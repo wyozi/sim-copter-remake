@@ -2,6 +2,9 @@
 
 #include "Game/SimCopterSessionSubsystem.h"
 
+#include "Game/SimCopterInputDebug.h"
+#include "Game/SimCopterMacWindowFix.h"
+
 #include "Formats/SimCopterOriginalGamePaths.h"
 #include "Containers/Ticker.h"
 #include "HAL/FileManager.h"
@@ -16,6 +19,8 @@
 void USimCopterSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection)
 {
 	Super::Initialize(Collection);
+	SimCopterInputDebug::RegisterIfRequested();
+	SimCopterMacWindowFix::Register();
 
 	int32 CommandLineCareerCity = INDEX_NONE;
 	if (FParse::Value(FCommandLine::Get(), TEXT("SimCopterCareerCity="), CommandLineCareerCity))
@@ -58,6 +63,12 @@ void USimCopterSessionSubsystem::Initialize(FSubsystemCollectionBase& Collection
 				}));
 		}
 	}
+}
+
+void USimCopterSessionSubsystem::Deinitialize()
+{
+	SimCopterMacWindowFix::Unregister();
+	Super::Deinitialize();
 }
 
 void USimCopterSessionSubsystem::RequestCareerCity(int32 InCareerCityIndex)

@@ -3831,9 +3831,12 @@ void ASimCopterMissionSystemActor::DumpMissionMarkers() const
 		{
 			continue;
 		}
+		const int32 RecordIndex = static_cast<int32>(&Record - MissionSystem.GetRecords().GetData());
 		UE_LOG(LogTemp, Display,
-			TEXT("MARKERS event %d '%s' type 0x%x begun %d: map primary (%d,%d) secondary (%d,%d) tertiary (%d,%d)"),
-			Record.EventId, *Record.Name, Record.TypeMask, IsMissionBegun(Record) ? 1 : 0,
+			TEXT("MARKERS event %d '%s' type 0x%x category %d slot %d%s begun %d: map primary (%d,%d) secondary (%d,%d) tertiary (%d,%d)"),
+			Record.EventId, *Record.Name, Record.TypeMask, Record.Category, RecordIndex,
+			RecordIndex == MissionSystem.GetMapFocusRecordIndex() ? TEXT(" SELECTED") : TEXT(""),
+			IsMissionBegun(Record) ? 1 : 0,
 			Record.TileX, Record.TileY, Record.SecondaryX, Record.SecondaryY, Record.TertiaryX, Record.TertiaryY);
 		for (TActorIterator<ASimCopterGroundAgent> It(GetWorld()); It; ++It)
 		{

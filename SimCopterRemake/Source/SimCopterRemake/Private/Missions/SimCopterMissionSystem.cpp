@@ -809,16 +809,20 @@ void FSimCopterMissionSystem::AnnounceCreated(const FSimCopterMissionRecord& Rec
 		SetMapFocusRecordIndex(RecordIndex, EMapFocusReason::Created);
 	}
 
+	// A background record (category 2) stops here, before the kind-5 message:
+	//     if (rec[0x54] == 2) { DAT_0057f9cc++; DAT_00505fb4 = DAT_00505fac >> 1; return rec[0x24]; }
+	// so a traffic jam is not announced while it is one car - it is announced when EVT_JamCarAdded
+	// promotes it at three, which is also when the map starts drawing its icon. Announcing it here
+	// said "traffic jam" for a job the map (FUN_004a4200 skips category 2) could not show.
 	if (Record.Category == CAT_Background)
 	{
 		BackgroundCount++;
 		SpawnCountdown = EasyIntervalCache >> 1;
+		return;
 	}
-	else
-	{
-		ActiveCount++;
-		SpawnCountdown = EasyIntervalCache;
-	}
+
+	ActiveCount++;
+	SpawnCountdown = EasyIntervalCache;
 	PostTypedUiMessage(5, &Record, Record.EventId, GetTypeTextId(Record.TypeMask), 0, 0, false);
 	PostAnnouncementVoice(Record);
 }

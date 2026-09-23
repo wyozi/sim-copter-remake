@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Ground/SimCopterGroundAgent.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 
 #include "Audio/SimCopterAudioSubsystem.h"
 #include "Camera/PlayerCameraManager.h"
@@ -5305,6 +5306,8 @@ void ASimCopterGroundAgent::OnUnknownOpcode(int32 Opcode)
 
 void ASimCopterGroundAgent::Tick(float DeltaSeconds)
 {
+	// Summed over every agent in the frame.
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterGroundAgent_Tick);
 	Super::Tick(DeltaSeconds);
 
 	// A replay stand-in is a prop: the clip says where it is and what pose it holds, and running

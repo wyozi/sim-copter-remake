@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Ground/SimCopterTrafficSystemActor.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "Game/SimCopterLoadingSubsystem.h"
 #include "City/SimCopterTunnel.h"
 #include "Algo/Count.h"
@@ -1074,18 +1075,32 @@ bool ASimCopterTrafficSystemActor::RestoreRuntimeSaveState(
 void ASimCopterTrafficSystemActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
-	UpdateAgentPool(DeltaSeconds);
-	UpdateTrafficInteractions(DeltaSeconds);
-	// After the traffic passes and outside them, because it belongs to neither AI mode: a car that
-	// is moving hits whoever is in front of it whatever the flow model says.
-	UpdatePedestrianVehicleImpacts(DeltaSeconds);
-	UpdateSpeederDesignation();
-	UpdateSpeeders(DeltaSeconds);
-	// Speeders take their spotlight mark before the police read it, so a car lit this frame can
-	// be pulled over this frame.
-	UpdateCriminalCars(DeltaSeconds);
-	UpdateDispatchVehicles(DeltaSeconds);
-	UpdateWholeMapPopulation(DeltaSeconds);
+	// Exclusive CSV stats (csvprofile / Docs/memory/mac-performance.md) so each pass shows up on
+	// its own instead of inside TickActors.
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterTraffic_AgentPool);
+		UpdateAgentPool(DeltaSeconds);
+	}
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterTraffic_Interactions);
+		UpdateTrafficInteractions(DeltaSeconds);
+		// After the traffic passes and outside them, because it belongs to neither AI mode: a car that
+		// is moving hits whoever is in front of it whatever the flow model says.
+		UpdatePedestrianVehicleImpacts(DeltaSeconds);
+	}
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterTraffic_Police);
+		UpdateSpeederDesignation();
+		UpdateSpeeders(DeltaSeconds);
+		// Speeders take their spotlight mark before the police read it, so a car lit this frame can
+		// be pulled over this frame.
+		UpdateCriminalCars(DeltaSeconds);
+		UpdateDispatchVehicles(DeltaSeconds);
+	}
+	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterTraffic_WholeMapPopulation);
+		UpdateWholeMapPopulation(DeltaSeconds);
+	}
 	UpdateTrafficAudio();
 }
 

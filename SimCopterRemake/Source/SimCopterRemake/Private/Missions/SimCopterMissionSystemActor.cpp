@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "Missions/SimCopterMissionSystemActor.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "Audio/SimCopterAudioSubsystem.h"
 #include "Flight/SimCopterHelicopterPawn.h"
 #include "Ground/SimCopterAmbientVehicles.h"
@@ -474,6 +475,7 @@ bool ASimCopterMissionSystemActor::RestoreRuntimeSaveState(const TArray<uint8>& 
 
 void ASimCopterMissionSystemActor::Tick(float DeltaTime)
 {
+	CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterMissions_Tick);
 	Super::Tick(DeltaTime);
 
 	if (SessionMode == ESimCopterMissionSessionMode::Pending)

@@ -1,6 +1,7 @@
 // Copyright Epic Games, Inc. All Rights Reserved.
 
 #include "City/SimCity2000CityActor.h"
+#include "ProfilingDebugging/CsvProfiler.h"
 #include "Game/SimCopterLoadingSubsystem.h"
 #include "City/SimCopterTunnel.h"
 #include "City/SimCopterTreeGrounding.h"
@@ -5627,6 +5628,7 @@ void ASimCity2000CityActor::Tick(float DeltaSeconds)
 	// needs rebuilding; a city with no lit objects never allocates a mesh section at all.
 	if (FlashingLightsComponent != nullptr && FlashingLightsComponent->HasLightPoints() && GetWorld() != nullptr)
 	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterCity_FlashingLights);
 		FlashingLightsComponent->SyncLightsFromPlayerCamera(GetWorld()->GetTimeSeconds());
 	}
 
@@ -5634,6 +5636,7 @@ void ASimCity2000CityActor::Tick(float DeltaSeconds)
 	// raster frame, so they rebuild against the live camera like the fire does.
 	if (SmokeStacksComponent != nullptr && SmokeStacksComponent->GetSmokeMarkerCount() > 0 && GetWorld() != nullptr)
 	{
+		CSV_SCOPED_TIMING_STAT_EXCLUSIVE(SimCopterCity_SmokeStacks);
 		SmokeStacksComponent->SyncSmokeFromPlayerCamera(GetWorld()->GetTimeSeconds());
 	}
 }

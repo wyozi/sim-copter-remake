@@ -1772,6 +1772,27 @@ void FSimCopterMissionSystem::RefocusAfterCompletion(const int32 CompletedRecord
 	SetMapFocusRecordIndex(FirstLive, EMapFocusReason::Completed);
 }
 
+void FSimCopterMissionSystem::RefocusAfterExpiry(const int32 ExpiredRecordIndex)
+{
+	// REMAKE-ONLY. The original never moves DAT_0057f9d8 on the category-4 or jam-expiry arms, so a
+	// job that failed or timed out stays on the map, lines and all, until the player cycles away.
+	// The remake re-picks the same way a completion does - which lands on Base Location.
+	if (FocusRecordIndex != ExpiredRecordIndex)
+	{
+		return;
+	}
+	int32 FirstLive = INDEX_NONE;
+	for (int32 Index = 0; Index < Records.Num(); ++Index)
+	{
+		if (IsMapFocusable(Records[Index]))
+		{
+			FirstLive = Index;
+			break;
+		}
+	}
+	SetMapFocusRecordIndex(FirstLive, EMapFocusReason::Expired);
+}
+
 void FSimCopterMissionSystem::UpdateLifecycle()
 {
 	for (int32 i = 0; i < Records.Num(); ++i)
@@ -1849,6 +1870,7 @@ void FSimCopterMissionSystem::UpdateLifecycle()
 					World->EndTrafficJam(Rec.EventId);
 				}
 				DeactivateRecord(i);
+				RefocusAfterExpiry(i);
 				continue;
 			}
 		}
@@ -1865,6 +1887,7 @@ void FSimCopterMissionSystem::UpdateLifecycle()
 				World->EndTrafficJam(Rec.EventId);
 			}
 			DeactivateRecord(i);
+			RefocusAfterExpiry(i);
 			continue;
 		}
 
@@ -2805,6 +2828,13 @@ void FSimCopterMissionSystem::PostEvent(const FSimCopterMissionEvent& Event)
 		break;
 	case EVT_VictimPickedUp:
 		Rec.VictimsPickedUp += Event.Value;
+		// REMAKE-ONLY: the original leaves the map where the player put it. Once a transport's
+		// passengers are aboard, the job the player is flying is that transport, so the map follows
+		// it (its line now runs to the drop-off: FUN_004a73e0 has cleared the pickup, or will).
+		if ((Rec.TypeMask & TYPE_Transport) != 0 && Event.Value > 0)
+		{
+			SetMapFocusRecordIndex(Idx, EMapFocusReason::PassengersAboard);
+		}
 		break;
 	case EVT_RioterDispersed:
 		Rec.RiotersDispersed += Event.Value;

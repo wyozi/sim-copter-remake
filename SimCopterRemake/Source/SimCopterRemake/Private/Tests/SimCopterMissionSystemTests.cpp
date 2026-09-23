@@ -2527,7 +2527,10 @@ bool FSimCopterMapFocusRulesTest::RunTest(const FString& Parameters)
 	System.FocusPreviousMapRecord();
 	TestEqual(TEXT("Previous -> transport"), System.GetMapFocusRecordIndex(), 1);
 
-	// Picking the party up does not move the selection; it only clears the pickup (+0x38).
+	// Picking the party up clears the pickup (+0x38), as FUN_004a73e0 does. The original leaves the
+	// selection alone; the REMAKE follows the transport once its passengers are aboard.
+	System.FocusPreviousMapRecord();
+	TestEqual(TEXT("Back on Base Location before the pickup"), System.GetMapFocusRecordIndex(), BaseSlot);
 	const FSimCopterMissionRecord* Transport = System.FindRecord(TransportId);
 	const int32 Party = Transport->TransportPassengers;
 	System.PostEvent(EVT_VictimPickedUp, TransportId, Party);
@@ -2535,7 +2538,7 @@ bool FSimCopterMapFocusRulesTest::RunTest(const FString& Parameters)
 	Transport = System.FindRecord(TransportId);
 	TestEqual(TEXT("Pickup cleared once everybody is aboard"), Transport->TertiaryX, -1);
 	TestEqual(TEXT("Drop-off kept"), Transport->SecondaryX, 40);
-	TestEqual(TEXT("Picking up does not change the selection"), System.GetMapFocusRecordIndex(), 1);
+	TestEqual(TEXT("Remake: picking up the passengers selects the transport"), System.GetMapFocusRecordIndex(), 1);
 
 	// Delivering completes it, and the selected record completing re-picks the first live slot.
 	System.PostEvent(EVT_TransportDelivered, TransportId, Party);
@@ -2543,15 +2546,14 @@ bool FSimCopterMapFocusRulesTest::RunTest(const FString& Parameters)
 	TestNull(TEXT("Transport completed"), System.FindRecord(TransportId));
 	TestEqual(TEXT("Completion of the selected record returns to Base Location"), System.GetMapFocusRecordIndex(), BaseSlot);
 
-	// A record retired through category 4 is a failure, not a completion: it stays selected.
+	// A record retired through category 4 is a failure, not a completion. The original leaves it
+	// selected (stale); the REMAKE re-picks as a completion would, which lands on Base Location.
 	System.FocusNextMapRecord();
 	TestEqual(TEXT("Next skips the dead slot to the robber"), System.GetMapFocusRecordIndex(), 2);
 	System.PostEvent(EVT_SetCategory, RobberId, CAT_ExpireSilently);
 	System.Tick(1.0f / 60.0f);
 	TestNull(TEXT("Robber retired"), System.FindRecord(RobberId));
-	TestEqual(TEXT("A failed record stays selected (stale, as in the original)"), System.GetMapFocusRecordIndex(), 2);
-	System.FocusNextMapRecord();
-	TestEqual(TEXT("Cycling off a dead record still works"), System.GetMapFocusRecordIndex(), BaseSlot);
+	TestEqual(TEXT("Remake: a failed selected record returns to Base Location"), System.GetMapFocusRecordIndex(), BaseSlot);
 
 	// With the selection empty, the lifecycle adopts the first live job - and passes over Base
 	// Location, which FUN_004a73e0 skips entirely.

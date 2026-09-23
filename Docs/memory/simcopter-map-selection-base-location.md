@@ -111,3 +111,17 @@ Every write, exhaustively (xrefs to 0x0057f9d8):
 - The mission catalog's "UFO" row is removed, because it only created a second base record.
 - Tests: `SimCopter.Missions.BaseLocationRecord`, `.MapFocusRules`,
   `.SaveFocusAndTransportLayout`, `.MarkerCoordinates`, and `SimCopter.Map.Overlays`.
+
+## Remake-only rules layered on top (2026-09-23)
+
+Chosen by the project owner over strict fidelity; both go through `SetMapFocusRecordIndex` with
+their own `EMapFocusReason`, so they are easy to find or drop:
+
+- **`PassengersAboard`** — `EVT_VictimPickedUp` on a transport (0x40) selects that record, so the
+  map follows the job the player is now flying to its drop-off. The original never writes
+  DAT_0057f9d8 on the pickup path.
+- **`Expired`** — `RefocusAfterExpiry` runs on the category-4 and jam-expiry arms and re-picks the
+  first live record (Base Location) when the dead record was the selection. The original leaves
+  that stale selection on the map until the player cycles.
+
+`SimCopter.Missions.MapFocusRules` asserts the remake behaviour for both.

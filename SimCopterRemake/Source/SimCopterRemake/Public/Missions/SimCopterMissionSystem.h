@@ -163,6 +163,10 @@ enum class EMapFocusReason : uint8
 	CycledPrevious, // FUN_004a9900 (map button / command 0x1d)
 	Loaded,         // FUN_004ab3e0: a saved game re-picks the first live record
 	Reset,          // table cleared (FUN_004a6c80) or Initialize
+	// Remake-only, not in SimCopter.exe (Docs/memory/simcopter-map-selection-base-location.md):
+	PassengersAboard, // a transport's passengers were picked up: the map follows it to the drop-off
+	Expired,          // the selected record failed (category 4) or timed out: back to the first
+	                  // live record (Base Location) instead of the original's stale selection
 };
 
 // MSVC rand(): the mission layer's PRNG (NOT the people-behavior LFSR).
@@ -825,6 +829,8 @@ private:
 	// FUN_004a73e0's re-pick after the SELECTED record completes: clear DAT_0057f9d8, then take the
 	// first live, non-background record in slot order (or leave it null).
 	void RefocusAfterCompletion(int32 CompletedRecordIndex);
+	// Remake-only: the same re-pick as a completion, for a selected record that failed or expired.
+	void RefocusAfterExpiry(int32 ExpiredRecordIndex);
 	void PostNag(FSimCopterMissionRecord& Record, int32 NagCode);
 	void PostTypedUiMessage(int32 Kind, const FSimCopterMissionRecord* Record, int32 EventId, int32 TextId, int32 ValueA, int32 ValueB, bool bNegative);
 

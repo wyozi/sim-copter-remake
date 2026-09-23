@@ -7784,6 +7784,17 @@ void ASimCopterHelicopterPawn::UpdateCheckupOffer()
 		return;
 	}
 
+	// Not once the level is complete. FUN_00449850 only asks FUN_00444750 to offer the check-up
+	// when FUN_00412fa0 returns 1 or 2, and that returns 3 instead whenever DAT_00519728 (set by
+	// FUN_00408c30 when the career points target is met) is 1 or 2 and the player is within two
+	// tiles of the terminal - the landing that ends the city. Servicing then would be money thrown
+	// away anyway: FUN_00484790 refuels and repairs every aircraft on entering the next city.
+	if (const ASimCopterMissionSystemActor* Missions = ResolveMissionSystem();
+		Missions != nullptr && Missions->IsLevelComplete())
+	{
+		return;
+	}
+
 	// Unlike FUN_00444750, the playable remake does not hide the panel behind a service-need
 	// threshold. Any airport touchdown opens it, including a pristine aircraft, so players learn
 	// where repair and refuelling live. Only consume the landing after the viewport accepts the

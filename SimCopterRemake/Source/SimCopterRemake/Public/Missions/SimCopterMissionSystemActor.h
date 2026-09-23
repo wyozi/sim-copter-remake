@@ -222,6 +222,9 @@ public:
 
 	// Returns true if the player has begun the mission (e.g. passenger/patient/victim picked up or onboard).
 	bool IsMissionBegun(const SimCopterMissions::FSimCopterMissionRecord& Record) const;
+	// The career city's points target is met (FUN_00408c30 -> DAT_00519728 = 1): landing at the
+	// airport now ends the level rather than offering a check-up.
+	bool IsLevelComplete() const { return MissionSystem.IsLevelComplete(); }
 	// Logs every live record's map tiles beside where its people actually stand and where its
 	// 3D world markers resolve to, so a marker pointing at the wrong place can be measured.
 	void DumpMissionMarkers() const;

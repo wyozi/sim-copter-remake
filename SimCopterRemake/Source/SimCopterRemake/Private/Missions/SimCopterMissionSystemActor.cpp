@@ -2,6 +2,7 @@
 
 #include "Missions/SimCopterMissionSystemActor.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "Game/SimCopterSettings.h"
 #include "Audio/SimCopterAudioSubsystem.h"
 #include "Flight/SimCopterHelicopterPawn.h"
 #include "Ground/SimCopterAmbientVehicles.h"
@@ -3609,6 +3610,14 @@ void ASimCopterMissionSystemActor::RefreshMissionMarkerWidget()
 	}
 
 	MissionMarkerCanvas->ClearChildren();
+
+	// The player's Settings > Interface choice; cleared rather than removed, so turning it back on
+	// takes effect on the next frame.
+	if (const USimCopterSettings* Settings = USimCopterSettings::Get(this);
+		Settings != nullptr && !Settings->IsMissionMarkersOnScreenEnabled())
+	{
+		return;
+	}
 
 	TArray<FSimCopterMissionWorldMarkerEntry> Markers;
 	BuildMissionWorldMarkers(Markers);

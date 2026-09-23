@@ -330,6 +330,13 @@ public:
 	static constexpr float HudScaleMin = 0.5f;
 	static constexpr float HudScaleMax = 2.0f;
 
+	/**
+	 * Whether the floating mission tags (and the hangar's Base Location tag) are drawn over the
+	 * world. The map panel's markers are unaffected. Remake-only: the original has no world tags.
+	 */
+	bool IsMissionMarkersOnScreenEnabled() const { return bMissionMarkersOnScreen; }
+	void SetMissionMarkersOnScreenEnabled(bool bEnabled) { bMissionMarkersOnScreen = bEnabled; }
+
 	// --- camera and input (profile-wide remake settings) ---
 
 	float GetOnFootFov() const { return OnFootFov; }
@@ -492,6 +499,9 @@ private:
 
 	UPROPERTY(Config)
 	float HudScale = 1.0f;
+
+	UPROPERTY(Config)
+	bool bMissionMarkersOnScreen = true;
 
 	UPROPERTY(Config)
 	float OnFootFov = DefaultFov;

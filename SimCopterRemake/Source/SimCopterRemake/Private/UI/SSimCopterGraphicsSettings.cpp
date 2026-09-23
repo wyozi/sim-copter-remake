@@ -1111,6 +1111,22 @@ void SSimCopterGraphicsSettings::PopulateRows(const TSharedRef<SVerticalBox>& Ro
 				LOCTEXT("PercentFormat", "{0}%"), FText::AsNumber(FMath::RoundToInt(Scale * 100.0f)));
 		}));
 
+	AddRow(BuildCheckboxRow(
+		LOCTEXT("MissionMarkersOnScreen", "Mission Markers on Screen"),
+		[this]()
+		{
+			const USimCopterSettings* Settings = GetSettings(this);
+			return Settings == nullptr || Settings->IsMissionMarkersOnScreenEnabled();
+		},
+		[this](const bool bEnabled)
+		{
+			if (USimCopterSettings* Settings = GetSettings(this))
+			{
+				Settings->SetMissionMarkersOnScreenEnabled(bEnabled);
+			}
+		},
+		[]() { return true; }));
+
 	const auto AddFovRow = [this, &AddRow](
 		const FText& Label,
 		TFunction<float(const USimCopterSettings*)> Getter,
@@ -1366,6 +1382,7 @@ void SSimCopterGraphicsSettings::CaptureEnteredState()
 		Entered.DayRealMinutes = Settings->GetDayRealMinutes();
 		Entered.NightRealMinutes = Settings->GetNightRealMinutes();
 		Entered.HudScale = Settings->GetHudScale();
+		Entered.bMissionMarkersOnScreen = Settings->IsMissionMarkersOnScreenEnabled();
 		Entered.OnFootFov = Settings->GetOnFootFov();
 		Entered.HelicopterFov = Settings->GetHelicopterFov();
 		Entered.CockpitFov = Settings->GetCockpitFov();
@@ -1419,6 +1436,7 @@ void SSimCopterGraphicsSettings::RestoreEnteredState()
 		Settings->SetDayRealMinutes(Entered.DayRealMinutes);
 		Settings->SetNightRealMinutes(Entered.NightRealMinutes);
 		Settings->SetHudScale(Entered.HudScale);
+		Settings->SetMissionMarkersOnScreenEnabled(Entered.bMissionMarkersOnScreen);
 		Settings->SetOnFootFov(Entered.OnFootFov);
 		Settings->SetHelicopterFov(Entered.HelicopterFov);
 		Settings->SetCockpitFov(Entered.CockpitFov);

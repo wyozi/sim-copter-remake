@@ -2,6 +2,7 @@
 
 #include "City/SimCity2000CityActor.h"
 #include "ProfilingDebugging/CsvProfiler.h"
+#include "City/SimCopterCloudTuning.h"
 #include "Game/SimCopterLoadingSubsystem.h"
 #include "City/SimCopterTunnel.h"
 #include "City/SimCopterTreeGrounding.h"
@@ -3483,6 +3484,7 @@ FString ASimCity2000CityActor::GetSessionCityFilePath() const
 void ASimCity2000CityActor::BeginPlay()
 {
 	Super::BeginPlay();
+	SimCopterCloudTuning::Apply(GetWorld());
 
 	// The main menu picked a city, so whatever was baked into this level has to be replaced even
 	// when the actor is not configured to load on begin play.
@@ -5623,6 +5625,13 @@ void ASimCity2000CityActor::RebuildCity()
 void ASimCity2000CityActor::Tick(float DeltaSeconds)
 {
 	Super::Tick(DeltaSeconds);
+
+	CloudTuningCheckSeconds -= DeltaSeconds;
+	if (CloudTuningCheckSeconds <= 0.0f)
+	{
+		CloudTuningCheckSeconds = 1.0f;
+		SimCopterCloudTuning::Apply(GetWorld());
+	}
 
 	// The blink phase is global and time-based, so the component decides whether anything actually
 	// needs rebuilding; a city with no lit objects never allocates a mesh section at all.

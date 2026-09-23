@@ -202,6 +202,9 @@ public:
 	bool IsInsideStandingBuildingBounds(const FVector& WorldLocation, float ClearanceCm = 0.0f) const;
 
 private:
+	// Countdown to the next SimCopterCloudTuning::Apply (once a second, from Tick).
+	float CloudTuningCheckSeconds = 0.0f;
+
 	UPROPERTY(VisibleAnywhere, Category = "SimCopter|City")
 	TObjectPtr<USceneComponent> SceneRoot;
 

@@ -50,10 +50,40 @@ Traps found building it — each cost a run:
 | Low Power + clouds (no cloud shadow) | 28.9 | the clouds are ~19 ms even at Low |
 
 The volumetric cloud layer (CelestialVault's `m_SimpleVolumetricCloud_TOD`) is the single biggest
-cost on Apple GPUs. None of its engine knobs moved the frame (`ShadowMap.MaxResolution`,
-`ShadowMap.RaySampleMaxCount`, `SkyAO`, `EmptySpaceSkipping`, `ViewRaySampleMaxCount`, the
-real-time sky capture's resolution/divider). Only disabling the shadow map or the layer did. If the
-clouds are ever wanted on Mac, the material itself is the thing to look at.
+cost on Apple GPUs. `ProfileGPU` puts it in one pass, `CloudView (PS) 240x135` - 18 ms for 32k
+pixels, so it is samples per ray, not resolution. **The engine's `r.VolumetricCloud.*SampleMaxCount`
+CVars do nothing here**: they only clamp, and the component (a 10 km layer at 5 km, traced 50 km,
+sample scales 1.0, a 282-node material with 3D Perlin-Worley and lightning volumes) asks for fewer.
+The component's own **`ViewSampleCountScale` and `ShadowViewSampleCountScale`** are the levers.
+
+### Clouds, re-enabled on Mac (2026-09-23)
+
+Measured with a fixed camera looking at the sky over the skyline (`SimBenchView 3560 -10990 6000
+12 60`), Low Power + clouds, GPU median:
+
+| Cloud setup | GPU ms | clouds cost |
+| --- | --- | --- |
+| none | 12.6 | - |
+| authored (scales 1.0) | 54.9 | ~42 |
+| scales 0.5, TracingMaxDistance 20 km | 23.0 | ~10 |
+| scales 0.25, TracingMaxDistance 20 km | 15.6 | ~3 - loses the horizon clouds |
+| **scales 0.25, authored 50 km** | **16.3** | **~3.6 - indistinguishable overhead and at the horizon** |
+
+`LayerHeight` and `StopTracingTransmittanceThreshold` moved nothing. With the clouds on, the
+real-time sky capture re-rendering them gave a p95 of ~46 ms; the capture CVars in the Mac profile
+bring it back to the no-cloud ~27 ms.
+
+Shipped: `SimCopter.Clouds.ViewSampleCountScale` / `ShadowViewSampleCountScale` (`SimCopterCloudTuning`)
+at 0.25 and `SimCopter.LowPower.KeepVolumetricClouds=1` in the Mac device profile, so Low Power
+Graphics keeps the sky on Mac. **Trap:** applying the scales once at the city's BeginPlay did not
+stick - the cloud layer is re-initialised after it - so the city actor re-applies them once a
+second, touching the component only when a value differs. `SimCloudSet <Property> <Value>` sets a
+cloud property from the console for more measurements.
+
+**Benchmark hygiene:** check `ps -Ao %cpu,comm | sort -rn | head` before trusting a run. One batch
+here ran beside an 8-core `ffmpeg` transcode and every game-thread stat came out 2.5-3x slow. The
+sky-view cloud table above may overlap it too; its rows were taken back to back, so they compare
+with each other, but re-measure before quoting them as absolutes.
 
 The Epic p95 stalls (~190 ms, a quarter of frames) show no pass that grows on stall frames; they are
 the GPU running at 10 fps with frames queued behind each other, and vanish at Low.
@@ -68,6 +98,7 @@ interactions 0.5, missions 0.4).
 - `Config/DefaultDeviceProfiles.ini` `[Mac DeviceProfile]`: cloud shadow map off, TSR history 100%.
   Epic 101.7 → 75.3 ms. Windows untouched.
 - `Config/Mac/MacGameUserSettings.ini`: Low Power Graphics defaults ON for a Mac first run.
+- Clouds re-enabled on Mac, including in Low Power Graphics, at ~3.6 ms (section above).
 - `FMaxisMeshLibrary::GetShared`: vehicles no longer re-read and re-parse the three sim3d*.max files
   per spawn. Correct but not visible in these benchmarks — the tour triggers few respawns.
 

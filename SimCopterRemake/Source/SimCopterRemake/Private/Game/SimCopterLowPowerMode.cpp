@@ -19,6 +19,16 @@ TMap<FString, FString> GCapturedValues;
 
 SimCopterLowPower::FOnLowPowerModeChanged GOnChanged;
 
+// Lets a platform keep the volumetric cloud layer in this mode. The Mac device profile sets it,
+// because there SimCopter.Clouds.*SampleCountScale bring the clouds down to ~3.6 ms (from ~42 ms
+// looking at the sky on an M1) - cheap enough to keep the sky that is otherwise just haze.
+int32 GKeepVolumetricClouds = 0;
+FAutoConsoleVariableRef CVarKeepVolumetricClouds(
+	TEXT("SimCopter.LowPower.KeepVolumetricClouds"),
+	GKeepVolumetricClouds,
+	TEXT("1: Low Power Graphics leaves r.VolumetricCloud alone instead of switching the clouds off."),
+	ECVF_Default);
+
 using SimCopterLowPower::FRenderSwitch;
 
 // Everything the Low scalability profile does NOT do. Anything the profile already handles is
@@ -164,6 +174,10 @@ void SimCopterLowPower::Apply(const bool bLowPower)
 		for (const FRenderSwitch& Switch : GRenderSwitches)
 		{
 			const FString Name(Switch.Name);
+			if (GKeepVolumetricClouds != 0 && Name == TEXT("r.VolumetricCloud"))
+			{
+				continue;
+			}
 
 			IConsoleVariable* Variable = IConsoleManager::Get().FindConsoleVariable(Switch.Name);
 			if (Variable == nullptr)

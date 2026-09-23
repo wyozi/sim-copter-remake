@@ -119,7 +119,11 @@ void USimCopterLoadingSubsystem::Show()
 {
 	if (LoadingWidget.IsValid() || !FSlateApplication::IsInitialized() || IsRunningDedicatedServer()) return;
 	LoadingWidget = SNew(SSimCopterLoadingScreen);
-	if (IsMoviePlayerEnabled())
+	// Not while the engine is still starting (a direct `/Game/CityRender` launch): FEngineLoop::Init
+	// loads the startup map and then blocks in WaitForMovieToFinish, and a manual-stop loading
+	// screen is only stopped from a later frame, so the whole game ran inside that wait at a few
+	// frames a second and never finished loading. The viewport widget below serves that case.
+	if (IsMoviePlayerEnabled() && GIsRunning)
 	{
 		FLoadingScreenAttributes Attributes;
 		Attributes.WidgetLoadingScreen = LoadingWidget;
